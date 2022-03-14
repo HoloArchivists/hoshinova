@@ -14,7 +14,7 @@ Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) installed
 and executable in your PATH.
 
 ```
-go install github.com/hizkifw/hoshinova@master
+go install github.com/hizkifw/hoshinova@main
 ```
 
 ## Configure
