@@ -2,7 +2,6 @@ package recorder
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 
@@ -18,6 +17,8 @@ type Recording struct {
 func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	tm := util.GetTaskManager(ctx)
 	tm.LogEvent(task.Video.Id, "starting ytarchive")
+	lg := util.GetLogger(ctx)
+	lg.Debug("starting ytarchive", "video_id", task.Video.Id)
 
 	url := "https://www.youtube.com/watch?v=" + string(task.Video.Id)
 	tempdir, err := os.MkdirTemp("", "rec")
@@ -27,7 +28,7 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	// Do not defer os.RemoveAll(tempdir) because we want to keep the recordings
 	// in case of error.
 
-	fmt.Printf("Downloading %s to %s\n", task.Video.Id, tempdir)
+	lg.Infof("Downloading %s to %s\n", task.Video.Id, tempdir)
 
 	cmd := exec.CommandContext(
 		ctx,
@@ -60,11 +61,13 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	cmd.Stderr = cw
 
 	if err := cmd.Start(); err != nil {
+		lg.Error("ytarchive failed to start", "error", err)
 		return nil, err
 	}
 
 	// Check return code
 	if err := cmd.Wait(); err != nil {
+		lg.Error("ytarchive exited with", "error", err)
 		return nil, err
 	}
 

@@ -15,10 +15,7 @@ type Discord struct {
 	WebhookURL string
 }
 
-// Verify interface compliance
-var _ Notifier = &Discord{}
-
-func NewDiscord(webhookURL string) *Discord {
+func NewDiscord(webhookURL string) Notifier {
 	return &Discord{
 		WebhookURL: webhookURL,
 	}

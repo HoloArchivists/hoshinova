@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/hizkifw/hoshinova/config"
+	"github.com/hizkifw/hoshinova/logger"
 	"github.com/hizkifw/hoshinova/notifier"
 	"github.com/hizkifw/hoshinova/recorder"
 	"github.com/hizkifw/hoshinova/taskman"
@@ -26,9 +27,11 @@ func main() {
 
 	tm := taskman.New()
 	wg := sync.WaitGroup{}
+	lg := logger.New(logger.LogLevelDebug)
 	ctx = util.WithWaitGroup(ctx, &wg)
 	ctx = util.WithConfig(ctx, cfg)
 	ctx = util.WithTaskManager(ctx, tm)
+	ctx = util.WithLogger(ctx, lg)
 
 	var uploaders []uploader.Uploader
 	var notifiers []notifier.Notifier
@@ -52,29 +55,33 @@ func main() {
 	go watcher.Watch(ctx, func(task *taskman.Task) {
 		rec, err := recorder.Record(ctx, task)
 		if err != nil {
-			fmt.Println("Error recording:", err)
+			lg.Error("Error recording:", err)
+			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 			return
 		}
 
 		for _, upl := range uploaders {
 			res, err := upl.Upload(ctx, rec)
 			if err != nil {
-				fmt.Println("Error uploading:", err)
+				lg.Error("Error uploading:", err)
+				tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 				return
 			}
 
 			for _, not := range notifiers {
 				not.NotifyUploaded(ctx, res)
 			}
+			tm.UpdateStep(task.Video.Id, taskman.StepDone)
 		}
 	})
 
-	// go func() {
-	// for {
-	// time.Sleep(time.Second)
-	// tm.PrintTable()
-	// }
-	// }()
+	go func() {
+		for {
+			tm.ClearOldTasks()
+			tm.PrintTable()
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	// Handle interrupt
 	c := make(chan os.Signal, 1)
@@ -82,8 +89,8 @@ func main() {
 	<-c
 	cancel()
 
-	fmt.Println("Waiting for all goroutines to finish...")
-	fmt.Println("Press Ctrl+C again to force exit")
+	lg.Info("Waiting for all goroutines to finish...")
+	lg.Info("Press Ctrl+C again to force exit")
 	go func() {
 		<-c
 		os.Exit(1)

@@ -33,6 +33,8 @@ type Task struct {
 	Step     Step
 	Logs     []LogEntry
 	Progress string
+
+	LastStepUpdate time.Time
 }
 
 type Video struct {
@@ -130,6 +132,7 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 		Time:    time.Now(),
 		Message: "Task state changed to " + string(step),
 	})
+	task.LastStepUpdate = time.Now()
 
 	t.tasks[videoId] = task
 
@@ -175,4 +178,16 @@ func (t *TaskManager) PrintTable() {
 
 	tbl.SetStyle(table.StyleColoredDark)
 	tbl.Render()
+}
+
+func (t *TaskManager) ClearOldTasks() {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	for videoId, task := range t.tasks {
+		if (task.Step == StepDone || task.Step == StepErrored) &&
+			time.Since(task.LastStepUpdate) > time.Hour*24*7 {
+			delete(t.tasks, videoId)
+		}
+	}
 }

@@ -14,10 +14,7 @@ type Local struct {
 	BaseURL string
 }
 
-// Verify interface compliance
-var _ Uploader = &Local{}
-
-func NewLocal(path string, baseURL string) *Local {
+func NewLocal(path string, baseURL string) Uploader {
 	return &Local{
 		Path:    path,
 		BaseURL: baseURL,
