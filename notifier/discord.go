@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/hizkifw/hoshinova/uploader"
+	"github.com/hizkifw/hoshinova/util"
 )
 
 type Discord struct {
@@ -24,6 +25,12 @@ func NewDiscord(webhookURL string) *Discord {
 }
 
 func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.UploadResult) error {
+	tm := util.GetTaskManager(ctx)
+	task, err := tm.Get(notification.VideoID)
+	if err != nil {
+		return err
+	}
+
 	// Set up http client
 	client := &http.Client{}
 
@@ -33,7 +40,7 @@ func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.Upl
 		"embeds": []map[string]interface{}{
 			{
 				"title":       "Video downloaded",
-				"description": fmt.Sprintf("[%s](%s)", notification.Title, notification.PublicURL),
+				"description": fmt.Sprintf("[%s](%s)", task.Video.Title, notification.PublicURL),
 				"fields": []map[string]interface{}{
 					{
 						"name":   "Source",
@@ -42,7 +49,7 @@ func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.Upl
 					},
 					{
 						"name":   "Channel",
-						"value":  fmt.Sprintf("[%s](https://www.youtube.com/channel/%s)", notification.ChannelName, notification.ChannelID),
+						"value":  fmt.Sprintf("[%s](https://www.youtube.com/channel/%s)", task.Video.ChannelName, task.Video.ChannelId),
 						"inline": true,
 					},
 				},

@@ -4,43 +4,30 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"sync"
 	"time"
 
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/rss"
+	"github.com/hizkifw/hoshinova/taskman"
+	"github.com/hizkifw/hoshinova/util"
 )
 
 // Watch will create a goroutine for each channel in the configuration
-func Watch(cfg *config.Config, ctx context.Context, callback func(PollEntry)) {
-	wg := &sync.WaitGroup{}
+func Watch(ctx context.Context, callback func(*taskman.Task)) {
+	wg := util.GetWaitGroup(ctx)
+	cfg := util.GetConfig(ctx)
 
 	for _, c := range cfg.Channels {
-		wg.Add(1)
 		go func(channel config.Channel) {
+			wg.Add(1)
 			defer wg.Done()
+
 			p := Poller{Channel: &channel}
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					latest, err := p.Poll()
-					if err != nil {
-						fmt.Println("Error polling channel:", err)
-					}
-					if latest != nil {
-						fmt.Printf("New video (%s): %s\n", latest.VideoID, latest.Title)
-						go callback(*latest)
-					}
-					time.Sleep(time.Duration(cfg.PollInterval) * time.Second)
-				}
-			}
+			p.WatchChannel(ctx, callback)
 		}(c)
 	}
 
 	fmt.Printf("Watching %d channels\n", len(cfg.Channels))
-	wg.Wait()
 }
 
 type PollEntry struct {
@@ -55,9 +42,40 @@ type Poller struct {
 	lastVideoID string
 }
 
+// WatchChannel will poll a single channel and call the callback function
+// with the Poll function returns a PollEntry
+func (p *Poller) WatchChannel(ctx context.Context, callback func(*taskman.Task)) {
+	util.RunLoopContext(ctx, func() {
+		latest, err := p.Poll()
+		if err != nil {
+			fmt.Println("Error polling channel:", err)
+		}
+		if latest != nil {
+			fmt.Printf("New video (%s): %s\n", latest.VideoID, latest.Title)
+
+			tm := util.GetTaskManager(ctx)
+			task, err := tm.Insert(taskman.Video{
+				Id:          taskman.VideoId(latest.VideoID),
+				Title:       latest.Title,
+				ChannelId:   p.Channel.ChannelID,
+				ChannelName: p.Channel.Name,
+			})
+
+			if err != nil {
+				fmt.Println("Error creating new task:", err)
+			} else {
+				callback(task)
+			}
+		}
+
+		cfg := util.GetConfig(ctx)
+		util.SleepContext(ctx, time.Duration(cfg.PollInterval)*time.Second)
+	})
+}
+
 // Poll will poll the channel and return the latest video that matches the
 // configured filters
-func (p *Poller) Poll() (*PollEntry, error) {
+func (p *Poller) Poll() (*rss.Entry, error) {
 	entries, err := rss.Poll(p.Channel.ChannelID)
 	if err != nil {
 		return nil, err
@@ -72,12 +90,7 @@ func (p *Poller) Poll() (*PollEntry, error) {
 	for _, filter := range p.Channel.Filters {
 		filter := regexp.Regexp(filter)
 		if filter.MatchString(latest.Title) {
-			return &PollEntry{
-				VideoID:     latest.VideoID,
-				Title:       latest.Title,
-				ChannelID:   p.Channel.ChannelID,
-				ChannelName: p.Channel.Name,
-			}, nil
+			return &latest, nil
 		}
 	}
 

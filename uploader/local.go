@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/hizkifw/hoshinova/recorder"
+	"github.com/hizkifw/hoshinova/util"
 )
 
 type Local struct {
@@ -24,6 +25,9 @@ func NewLocal(path string, baseURL string) *Local {
 }
 
 func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadResult, error) {
+	tm := util.GetTaskManager(ctx)
+	tm.LogEvent(item.VideoID, "uploading")
+
 	basename := filepath.Base(item.FilePath)
 
 	if err := os.MkdirAll(l.Path, 0755); err != nil {
@@ -34,10 +38,7 @@ func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadRe
 	}
 
 	return &UploadResult{
-		Title:       item.Title,
-		VideoID:     item.VideoID,
-		PublicURL:   filepath.Join(l.BaseURL, basename),
-		ChannelID:   item.ChannelID,
-		ChannelName: item.ChannelName,
+		VideoID:   item.VideoID,
+		PublicURL: filepath.Join(l.BaseURL, basename),
 	}, nil
 }

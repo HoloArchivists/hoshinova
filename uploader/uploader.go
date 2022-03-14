@@ -6,6 +6,7 @@ import (
 
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/recorder"
+	"github.com/hizkifw/hoshinova/taskman"
 )
 
 type Uploader interface {
@@ -13,11 +14,8 @@ type Uploader interface {
 }
 
 type UploadResult struct {
-	Title       string `json:"title"`
-	VideoID     string `json:"video_id"`
-	PublicURL   string `json:"public_url"`
-	ChannelID   string `json:"channel_id"`
-	ChannelName string `json:"channel_name"`
+	VideoID   taskman.VideoId
+	PublicURL string
 }
 
 func NewUploader(u config.Uploader) (Uploader, error) {

@@ -1,44 +1,25 @@
 package recorder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 
-	"github.com/hizkifw/hoshinova/watcher"
+	"github.com/hizkifw/hoshinova/taskman"
+	"github.com/hizkifw/hoshinova/util"
 )
 
 type Recording struct {
-	VideoID     string
-	Title       string
-	FilePath    string
-	ChannelID   string
-	ChannelName string
+	VideoID  taskman.VideoId
+	FilePath string
 }
 
-func WaitAndRecord(ctx context.Context, in chan *watcher.PollEntry, out chan<- *Recording) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case entry := <-in:
-			go func(entry watcher.PollEntry) {
-				rec, err := Record(ctx, &entry)
-				if err != nil {
-					fmt.Printf("Error recording %s: %s\n", entry.VideoID, err)
-					return
-				}
-				fmt.Printf("Finished recording %s\n", entry.VideoID)
-				out <- rec
-			}(*entry)
-		}
-	}
-}
+func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
+	tm := util.GetTaskManager(ctx)
+	tm.LogEvent(task.Video.Id, "starting ytarchive")
 
-func Record(ctx context.Context, entry *watcher.PollEntry) (*Recording, error) {
-	url := "https://www.youtube.com/watch?v=" + entry.VideoID
+	url := "https://www.youtube.com/watch?v=" + string(task.Video.Id)
 	tempdir, err := os.MkdirTemp("", "rec")
 	if err != nil {
 		return nil, err
@@ -46,12 +27,12 @@ func Record(ctx context.Context, entry *watcher.PollEntry) (*Recording, error) {
 	// Do not defer os.RemoveAll(tempdir) because we want to keep the recordings
 	// in case of error.
 
-	fmt.Printf("Downloading %s to %s\n", entry.VideoID, tempdir)
+	fmt.Printf("Downloading %s to %s\n", task.Video.Id, tempdir)
 
 	cmd := exec.CommandContext(
 		ctx,
 		"ytarchive",
-		"--wait", "--vp9",
+		"--wait", "--vp9", "--merge",
 		"--thumbnail", "--add-metadata",
 		"--threads", "8",
 		"--output", "%(id)s",
@@ -59,9 +40,24 @@ func Record(ctx context.Context, entry *watcher.PollEntry) (*Recording, error) {
 	)
 	cmd.Dir = tempdir
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	yta := NewYTA()
+	cw := NewCallbackWriter(func(line string) {
+		yta.ParseLine(line)
+
+		tm.UpdateProgress(task.Video.Id, yta.TotalSize)
+		switch yta.State {
+		case YTAStateWaiting:
+			tm.UpdateStep(task.Video.Id, taskman.StepWaitingForLive)
+		case YTAStateRecording:
+			tm.UpdateStep(task.Video.Id, taskman.StepRecording)
+		case YTAStateMuxing:
+			tm.UpdateStep(task.Video.Id, taskman.StepMuxing)
+		case YTAStateFinished:
+			tm.UpdateStep(task.Video.Id, taskman.StepDone)
+		}
+	})
+	cmd.Stdout = cw
+	cmd.Stderr = cw
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -73,10 +69,7 @@ func Record(ctx context.Context, entry *watcher.PollEntry) (*Recording, error) {
 	}
 
 	return &Recording{
-		VideoID:     entry.VideoID,
-		Title:       entry.Title,
-		FilePath:    tempdir,
-		ChannelID:   entry.ChannelID,
-		ChannelName: entry.ChannelName,
+		VideoID:  task.Video.Id,
+		FilePath: tempdir,
 	}, nil
 }
