@@ -10,14 +10,26 @@ import (
 type Regexp regexp.Regexp
 
 type Config struct {
-	Channels     []Channel `yaml:"channels"`
-	PollInterval int       `yaml:"poll_interval"`
+	PollInterval int        `yaml:"poll_interval"`
+	Channels     []Channel  `yaml:"channels"`
+	Uploaders    []Uploader `yaml:"uploaders"`
+	Notifiers    []Notifier `yaml:"notifiers"`
 }
 
 type Channel struct {
 	Name      string   `yaml:"name"`
 	ChannelID string   `yaml:"id"`
 	Filters   []Regexp `yaml:"filters"`
+}
+
+type Uploader struct {
+	Type   string            `yaml:"type"`
+	Config map[string]string `yaml:"config"`
+}
+
+type Notifier struct {
+	Type   string            `yaml:"type"`
+	Config map[string]string `yaml:"config"`
 }
 
 func LoadConfig() (*Config, error) {

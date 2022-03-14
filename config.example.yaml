@@ -3,5 +3,5 @@ channels:
 - name: Moona
   id: UCP0BspO_AMEe3aQqqpo89Dg
   filters:
-  - "MoonUtau"
-  - "Unarchived"
+  - "(?i)MoonUtau"
+  - "(?i)Unarchived"
