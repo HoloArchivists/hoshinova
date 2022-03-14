@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/hizkifw/hoshinova/config"
@@ -12,8 +13,8 @@ import (
 )
 
 // Watch will create a goroutine for each channel in the configuration
-func Watch(ctx context.Context, callback func(*taskman.Task)) {
-	wg := util.GetWaitGroup(ctx)
+func Watch(ctx context.Context, callback func(*taskman.Task)) *sync.WaitGroup {
+	wg := sync.WaitGroup{}
 	cfg := util.GetConfig(ctx)
 	lg := util.GetLogger(ctx)
 
@@ -28,6 +29,7 @@ func Watch(ctx context.Context, callback func(*taskman.Task)) {
 	}
 
 	lg.Infof("Watching %d channels\n", len(cfg.Channels))
+	return &wg
 }
 
 type PollEntry struct {

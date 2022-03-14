@@ -2,7 +2,6 @@ package util
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/hizkifw/hoshinova/config"
@@ -16,14 +15,6 @@ const (
 	taskmanKey   = "taskman"
 	loggerKey    = "logger"
 )
-
-func WithWaitGroup(ctx context.Context, wg *sync.WaitGroup) context.Context {
-	return context.WithValue(ctx, waitGroupKey, wg)
-}
-
-func GetWaitGroup(ctx context.Context) *sync.WaitGroup {
-	return ctx.Value(waitGroupKey).(*sync.WaitGroup)
-}
 
 func WithConfig(ctx context.Context, config *config.Config) context.Context {
 	return context.WithValue(ctx, configKey, config)

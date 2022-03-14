@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"github.com/hizkifw/hoshinova/config"
@@ -23,7 +22,6 @@ func main() {
 		panic(err)
 	}
 
-	wg := sync.WaitGroup{}
 	lg := logger.New(logger.LogLevelDebug)
 	tm := taskman.New(cfg, lg)
 
@@ -31,7 +29,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = util.WithLogger(ctx, lg)
 	ctx = util.WithConfig(ctx, cfg)
-	ctx = util.WithWaitGroup(ctx, &wg)
 	ctx = util.WithTaskManager(ctx, tm)
 
 	var uploaders []uploader.Uploader
@@ -56,7 +53,7 @@ func main() {
 	}
 
 	// Start watching the channels for new videos
-	go watcher.Watch(ctx, func(task *taskman.Task) {
+	wg := watcher.Watch(ctx, func(task *taskman.Task) {
 		rec, err := recorder.Record(ctx, task)
 		if err != nil {
 			lg.Error("Error recording:", err)
