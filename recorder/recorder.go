@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -20,18 +21,9 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	lg := util.GetLogger(ctx)
 	lg.Debug("starting ytarchive", "video_id", task.Video.Id)
 
+	// Set up the command.
 	url := "https://www.youtube.com/watch?v=" + string(task.Video.Id)
-	tempdir, err := os.MkdirTemp("", "rec")
-	if err != nil {
-		return nil, err
-	}
-	// Do not defer os.RemoveAll(tempdir) because we want to keep the recordings
-	// in case of error.
-
-	lg.Infof("Downloading %s to %s\n", task.Video.Id, tempdir)
-
-	cmd := exec.CommandContext(
-		ctx,
+	cmd := exec.Command(
 		"ytarchive",
 		"--wait", "--vp9", "--merge",
 		"--thumbnail", "--add-metadata",
@@ -39,13 +31,14 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 		"--output", "%(id)s",
 		url, "best",
 	)
-	cmd.Dir = tempdir
+	cmd.Dir = task.WorkingDirectory
 
+	// The callback writer will receive the output from the command and parse it.
 	yta := NewYTA()
 	cw := NewCallbackWriter(func(line string) {
 		yta.ParseLine(line)
-
 		tm.UpdateProgress(task.Video.Id, yta.TotalSize)
+
 		switch yta.State {
 		case YTAStateWaiting:
 			tm.UpdateStep(task.Video.Id, taskman.StepWaitingForLive)
@@ -55,24 +48,62 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 			tm.UpdateStep(task.Video.Id, taskman.StepMuxing)
 		case YTAStateFinished:
 			tm.UpdateStep(task.Video.Id, taskman.StepDone)
+		case YTAStateError:
+			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+		case YTAStateInterrupted:
+			tm.UpdateStep(task.Video.Id, taskman.StepCancelled)
 		}
 	})
+
+	// Pipe the output of the command to the callback writer.
 	cmd.Stdout = cw
 	cmd.Stderr = cw
 
+	// Start the command
 	if err := cmd.Start(); err != nil {
 		lg.Error("ytarchive failed to start", "error", err)
 		return nil, err
 	}
 
-	// Check return code
-	if err := cmd.Wait(); err != nil {
-		lg.Error("ytarchive exited with", "error", err)
-		return nil, err
+	// Set up a goroutine to send an interrupt signal to the process if the
+	// context is cancelled.
+	finished := make(chan bool, 1)
+	go func() {
+		select {
+		case <-ctx.Done():
+			lg.Debug("ytarchive context cancelled, sending interrupt signal")
+			cmd.Process.Signal(os.Interrupt)
+		case <-finished:
+		}
+	}()
+
+	// Wait for the command to exit
+	code := waitForExitCode(cmd)
+	finished <- true
+	if code != 0 {
+		lg.Error("ytarchive failed", "exit_code", code)
+		return nil, fmt.Errorf("ytarchive failed with exit code %d", code)
 	}
 
 	return &Recording{
 		VideoID:  task.Video.Id,
-		FilePath: tempdir,
+		FilePath: yta.OutputFile,
 	}, nil
+}
+
+// waitForExitCode waits for the command to exit and returns the exit code.
+func waitForExitCode(cmd *exec.Cmd) int {
+	for {
+		if err := cmd.Wait(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+
+				// Exit code -1 means the process received a signal. We only want to
+				// return if the process has exited.
+				if code != -1 {
+					return code
+				}
+			}
+		}
+	}
 }

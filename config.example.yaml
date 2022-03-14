@@ -4,12 +4,13 @@ channels:
 - name: Moona
   id: UCP0BspO_AMEe3aQqqpo89Dg
   filters:
-  - "(?i)MoonUtau"
-  - "(?i)Unarchived"
+  - '(?i)MoonUtau'
+  - '(?i)Karaoke'
+  - '(?i)Unarchived'
 - name: Okayu
   id: UCvaTdHTWBGv3MKj3KVqJVCw
   filters:
-  - "(?i)ASMR"
+  - '(?i)ASMR'
 
 uploaders:
 - type: local

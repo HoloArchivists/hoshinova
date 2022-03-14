@@ -8,12 +8,13 @@ import (
 type YTAState string
 
 const (
-	YTAStateIdle      YTAState = "idle"
-	YTAStateWaiting   YTAState = "waiting"
-	YTAStateRecording YTAState = "recording"
-	YTAStateMuxing    YTAState = "muxing"
-	YTAStateFinished  YTAState = "finished"
-	YTAStateError     YTAState = "error"
+	YTAStateIdle        YTAState = "idle"
+	YTAStateWaiting     YTAState = "waiting"
+	YTAStateRecording   YTAState = "recording"
+	YTAStateMuxing      YTAState = "muxing"
+	YTAStateFinished    YTAState = "finished"
+	YTAStateError       YTAState = "error"
+	YTAStateInterrupted YTAState = "interrupted"
 )
 
 type YTA struct {
@@ -43,6 +44,8 @@ type YTA struct {
 	TotalSize string `json:"total_size"`
 	// The selected video quality.
 	VideoQuality string `json:"video_quality"`
+	// The full path of the final output file.
+	OutputFile string `json:"output_file"`
 }
 
 func NewYTA() *YTA {
@@ -105,8 +108,13 @@ func (y *YTA) ParseLine(line string) {
 		y.State = YTAStateMuxing
 	}
 
+	if strings.Contains(line, "User Interrupt") {
+		y.State = YTAStateInterrupted
+	}
+
 	if strings.HasPrefix(line, "Final file: ") {
 		y.State = YTAStateFinished
+		y.OutputFile = strings.TrimPrefix(line, "Final file: ")
 	}
 
 	if strings.HasPrefix(line, "Livestream has been processed.") {

@@ -2,7 +2,6 @@ package watcher
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 func Watch(ctx context.Context, callback func(*taskman.Task)) {
 	wg := util.GetWaitGroup(ctx)
 	cfg := util.GetConfig(ctx)
+	lg := util.GetLogger(ctx)
 
 	for _, c := range cfg.Channels {
 		go func(channel config.Channel) {
@@ -27,7 +27,7 @@ func Watch(ctx context.Context, callback func(*taskman.Task)) {
 		}(c)
 	}
 
-	fmt.Printf("Watching %d channels\n", len(cfg.Channels))
+	lg.Infof("Watching %d channels\n", len(cfg.Channels))
 }
 
 type PollEntry struct {
@@ -46,12 +46,15 @@ type Poller struct {
 // with the Poll function returns a PollEntry
 func (p *Poller) WatchChannel(ctx context.Context, callback func(*taskman.Task)) {
 	util.RunLoopContext(ctx, func() {
+		lg := util.GetLogger(ctx)
+
 		latest, err := p.Poll()
 		if err != nil {
-			fmt.Println("Error polling channel:", err)
+			lg.Error("Error polling channel:", err)
 		}
+
 		if latest != nil {
-			fmt.Printf("New video (%s): %s\n", latest.VideoID, latest.Title)
+			lg.Infof("New video (%s): %s\n", latest.VideoID, latest.Title)
 
 			tm := util.GetTaskManager(ctx)
 			task, err := tm.Insert(taskman.Video{
@@ -62,7 +65,7 @@ func (p *Poller) WatchChannel(ctx context.Context, callback func(*taskman.Task))
 			})
 
 			if err != nil {
-				fmt.Println("Error creating new task:", err)
+				lg.Error("Error creating new task:", err)
 			} else {
 				callback(task)
 			}

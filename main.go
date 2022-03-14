@@ -23,19 +23,21 @@ func main() {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	tm := taskman.New()
 	wg := sync.WaitGroup{}
 	lg := logger.New(logger.LogLevelDebug)
-	ctx = util.WithWaitGroup(ctx, &wg)
-	ctx = util.WithConfig(ctx, cfg)
-	ctx = util.WithTaskManager(ctx, tm)
+	tm := taskman.New(cfg, lg)
+
+	// Create context
+	ctx, cancel := context.WithCancel(context.Background())
 	ctx = util.WithLogger(ctx, lg)
+	ctx = util.WithConfig(ctx, cfg)
+	ctx = util.WithWaitGroup(ctx, &wg)
+	ctx = util.WithTaskManager(ctx, tm)
 
 	var uploaders []uploader.Uploader
 	var notifiers []notifier.Notifier
 
+	// Create uploaders
 	for _, u := range cfg.Uploaders {
 		upl, err := uploader.NewUploader(u)
 		if err != nil {
@@ -44,6 +46,7 @@ func main() {
 		uploaders = append(uploaders, upl)
 	}
 
+	// Create notifiers
 	for _, n := range cfg.Notifiers {
 		not, err := notifier.NewNotifier(n)
 		if err != nil {
@@ -52,6 +55,7 @@ func main() {
 		notifiers = append(notifiers, not)
 	}
 
+	// Start watching the channels for new videos
 	go watcher.Watch(ctx, func(task *taskman.Task) {
 		rec, err := recorder.Record(ctx, task)
 		if err != nil {
@@ -75,6 +79,7 @@ func main() {
 		}
 	})
 
+	// Print the table of tasks every 5 seconds
 	go func() {
 		for {
 			tm.ClearOldTasks()

@@ -27,9 +27,12 @@ func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadRe
 
 	basename := filepath.Base(item.FilePath)
 
+	// Create the destination directory if it doesn't exist
 	if err := os.MkdirAll(l.Path, 0755); err != nil {
 		return nil, err
 	}
+
+	// Move the file to the destination
 	if err := os.Rename(item.FilePath, filepath.Join(l.Path, basename)); err != nil {
 		return nil, err
 	}

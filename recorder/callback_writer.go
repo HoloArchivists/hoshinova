@@ -5,6 +5,8 @@ import (
 	"io"
 )
 
+// CallbackWriter is an io.Writer that calls a callback function for every line
+// written.
 type CallbackWriter struct {
 	buffer   bytes.Buffer
 	callback func(string)
