@@ -64,8 +64,10 @@ func main() {
 			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 			return
 		}
+		lg.Debug("Recording finished", rec)
 
-		for _, upl := range uploaders {
+		for i, upl := range uploaders {
+			lg.Info("Uploading", task.Video.Id, "to", cfg.Uploaders[i].Type)
 			res, err := upl.Upload(ctx, rec)
 			if err != nil {
 				lg.Error("Error uploading", task.Video.Id, err)
@@ -74,6 +76,7 @@ func main() {
 			}
 
 			for _, not := range notifiers {
+				lg.Debug("Notifying", task.Video.Id)
 				not.NotifyUploaded(ctx, res)
 			}
 			tm.UpdateStep(task.Video.Id, taskman.StepDone)

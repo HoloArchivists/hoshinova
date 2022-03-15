@@ -87,6 +87,7 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 		return nil, fmt.Errorf("ytarchive failed with exit code %d", code)
 	}
 
+	lg.Infof("Finished ytarchive for %s", task.Video.Id)
 	return &Recording{
 		VideoID:  task.Video.Id,
 		FilePath: yta.OutputFile,

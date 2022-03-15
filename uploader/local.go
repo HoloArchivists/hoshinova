@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/hizkifw/hoshinova/recorder"
+	"github.com/hizkifw/hoshinova/taskman"
 	"github.com/hizkifw/hoshinova/util"
 )
 
@@ -24,6 +25,7 @@ func NewLocal(path string, baseURL string) Uploader {
 func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadResult, error) {
 	tm := util.GetTaskManager(ctx)
 	tm.LogEvent(item.VideoID, "uploading")
+	tm.UpdateStep(item.VideoID, taskman.StepUploading)
 
 	basename := filepath.Base(item.FilePath)
 
