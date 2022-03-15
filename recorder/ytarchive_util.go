@@ -74,10 +74,11 @@ func (y *YTA) ParseLine(line string) {
 	// Parse the video and audio fragment counts.
 	if strings.HasPrefix(line, "Video Fragments: ") {
 		parts := strings.Split(line, "; ")
-		if len(parts) != 2 {
+		if len(parts) != 3 {
 			return
 		}
 
+		y.State = YTAStateRecording
 		y.VideoFragments, _ = strconv.Atoi(
 			strings.TrimPrefix(parts[0], "Video Fragments: "),
 		)
@@ -101,7 +102,6 @@ func (y *YTA) ParseLine(line string) {
 	}
 
 	if strings.HasPrefix(line, "Selected quality: ") {
-		y.State = YTAStateRecording
 		y.VideoQuality = stripansi.Strip(
 			strings.TrimPrefix(line, "Selected quality: "),
 		)
