@@ -8,11 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/logger"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/rivo/tview"
 )
 
 type Step string
@@ -63,14 +61,7 @@ type TaskManager struct {
 	lock   sync.RWMutex
 	config *config.Config
 	logger logger.Logger
-
-	// TableContentReadOnly implements noop write methods to tview.TableContent,
-	// so we only have to implement the read methods.
-	tview.TableContentReadOnly
 }
-
-// TaskManager should implement tview.TableContent
-var _ tview.TableContent = (*TaskManager)(nil)
 
 func New(config *config.Config, logger logger.Logger) *TaskManager {
 	return &TaskManager{
@@ -284,55 +275,4 @@ func (t *TaskManager) GetTaskByIndex(index int) (*Task, error) {
 	}
 
 	return nil, ErrTaskNotFound
-}
-
-// GetCell returns the content of the cell at the given position. This method
-// is used by tview to render the table.
-func (t *TaskManager) GetCell(row, col int) *tview.TableCell {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
-	headers := []string{"Video Id", "Channel", "Title", "Status", "Progress"}
-	if row == 0 {
-		return tview.
-			NewTableCell(headers[col]).
-			SetBackgroundColor(tcell.ColorPurple).
-			SetTextColor(tcell.ColorWhite).
-			SetAttributes(tcell.AttrBold).
-			SetSelectable(false)
-	}
-
-	task, err := t.GetTaskByIndex(row - 1)
-	if err != nil {
-		return tview.NewTableCell("")
-	}
-
-	switch col {
-	case 0:
-		return tview.NewTableCell(string(task.Video.Id))
-	case 1:
-		return tview.NewTableCell(fmt.Sprintf("%.10s", task.Video.ChannelName))
-	case 2:
-		return tview.NewTableCell(fmt.Sprintf("%.30s", task.Video.Title))
-	case 3:
-		return tview.NewTableCell(string(task.Step))
-	case 4:
-		return tview.NewTableCell(task.Progress)
-	}
-
-	return tview.NewTableCell("")
-}
-
-// GetColumnCount returns the number of columns in the table.
-func (t *TaskManager) GetColumnCount() int {
-	return 5
-}
-
-// GetRowCount returns the number of rows in the table.
-func (t *TaskManager) GetRowCount() int {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
-	// +1 for the header
-	return t.tasks.Len() + 1
 }
