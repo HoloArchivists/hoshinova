@@ -24,6 +24,9 @@ type Logger interface {
 	Warnf(format string, args ...interface{})
 	Errorf(format string, args ...interface{})
 	Fatalf(format string, args ...interface{})
+
+	GetLogLevel() LogLevel
+	SetLogLevel(level LogLevel)
 }
 
 type logger struct {
@@ -84,4 +87,12 @@ func (l *logger) Errorf(format string, args ...interface{}) {
 
 func (l *logger) Fatalf(format string, args ...interface{}) {
 	l.logf(LogLevelFatal, format, args...)
+}
+
+func (l *logger) GetLogLevel() LogLevel {
+	return l.level
+}
+
+func (l *logger) SetLogLevel(level LogLevel) {
+	l.level = level
 }

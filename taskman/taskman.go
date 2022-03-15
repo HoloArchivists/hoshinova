@@ -7,9 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/logger"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/rivo/tview"
 )
 
 type Step string
@@ -38,6 +40,7 @@ type Task struct {
 	Logs     []LogEntry
 	Progress string
 
+	CreatedAt        time.Time
 	LastStepUpdate   time.Time
 	WorkingDirectory string
 }
@@ -55,22 +58,33 @@ type LogEntry struct {
 }
 
 type TaskManager struct {
-	tasks  map[VideoId]Task
+	tasks  *TaskMap
 	lock   sync.RWMutex
 	config *config.Config
 	logger logger.Logger
+
+	// TableContentReadOnly implements noop write methods to tview.TableContent,
+	// so we only have to implement the read methods.
+	tview.TableContentReadOnly
 }
+
+// TaskManager should implement tview.TableContent
+var _ tview.TableContent = (*TaskManager)(nil)
 
 func New(config *config.Config, logger logger.Logger) *TaskManager {
 	return &TaskManager{
-		tasks:  make(map[VideoId]Task),
+		tasks:  NewTaskMap(),
 		config: config,
 		logger: logger,
 	}
 }
 
 func (t *TaskManager) Insert(video Video) (*Task, error) {
-	if _, ok := t.tasks[video.Id]; ok {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	// Check if the task already exists
+	if _, ok := t.tasks.Get(video.Id); ok {
 		return nil, ErrTaskAlreadyExists
 	}
 
@@ -91,11 +105,12 @@ func (t *TaskManager) Insert(video Video) (*Task, error) {
 			},
 		},
 		WorkingDirectory: workdir,
+		CreatedAt:        time.Now(),
+		LastStepUpdate:   time.Now(),
 	}
 
-	t.lock.Lock()
-	t.tasks[video.Id] = task
-	t.lock.Unlock()
+	// Add the task to the map
+	t.tasks.Set(video.Id, &task)
 
 	return &task, nil
 }
@@ -103,20 +118,26 @@ func (t *TaskManager) Insert(video Video) (*Task, error) {
 func (t *TaskManager) Get(videoId VideoId) (*Task, error) {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
+	return t.Get(videoId)
+}
 
-	task, ok := t.tasks[videoId]
-	if !ok {
-		return nil, ErrTaskNotFound
+func (t *TaskManager) GetAll() []Task {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	tasks := make([]Task, 0, t.tasks.Len())
+	for task := range t.tasks.Iter() {
+		tasks = append(tasks, *task)
 	}
 
-	return &task, nil
+	return tasks
 }
 
 func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	task, ok := t.tasks[videoId]
+	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
 	}
@@ -126,7 +147,7 @@ func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
 		Message: message,
 	})
 
-	t.tasks[videoId] = task
+	t.tasks.Set(videoId, task)
 
 	return nil
 }
@@ -135,7 +156,7 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	task, ok := t.tasks[videoId]
+	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
 	}
@@ -150,7 +171,7 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 		Message: "Task state changed to " + string(step),
 	})
 	task.LastStepUpdate = time.Now()
-	t.tasks[videoId] = task
+	t.tasks.Set(videoId, task)
 
 	// If the task is done, remove the working directory
 	if step == StepDone {
@@ -165,13 +186,13 @@ func (t *TaskManager) UpdateProgress(videoId VideoId, progress string) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	task, ok := t.tasks[videoId]
+	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
 	}
 
 	task.Progress = progress
-	t.tasks[videoId] = task
+	t.tasks.Set(videoId, task)
 
 	return nil
 }
@@ -188,7 +209,7 @@ func (t *TaskManager) PrintTable() {
 		{Name: "Video Id", Mode: table.Asc},
 	})
 
-	for _, task := range t.tasks {
+	for task := range t.tasks.Iter() {
 		tbl.AppendRow(table.Row{
 			task.Video.Id,
 			fmt.Sprintf("%.10s", task.Video.ChannelName),
@@ -206,10 +227,81 @@ func (t *TaskManager) ClearOldTasks() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	for videoId, task := range t.tasks {
+	for task := range t.tasks.Iter() {
 		if (task.Step == StepDone || task.Step == StepErrored) &&
 			time.Since(task.LastStepUpdate) > time.Hour*24*7 {
-			delete(t.tasks, videoId)
+			t.tasks.Delete(task.Video.Id)
 		}
 	}
+}
+
+// GetTaskByIndex returns the task at the given index, sorted by the time the
+// task was created.
+func (t *TaskManager) GetTaskByIndex(index int) (*Task, error) {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	if index < 0 || index >= t.tasks.Len() {
+		return nil, ErrTaskNotFound
+	}
+
+	for task := range t.tasks.Iter() {
+		if index == 0 {
+			return task, nil
+		}
+		index--
+	}
+
+	return nil, ErrTaskNotFound
+}
+
+// GetCell returns the content of the cell at the given position. This method
+// is used by tview to render the table.
+func (t *TaskManager) GetCell(row, col int) *tview.TableCell {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	headers := []string{"Video Id", "Channel", "Title", "Status", "Progress"}
+	if row == 0 {
+		return tview.
+			NewTableCell(headers[col]).
+			SetBackgroundColor(tcell.ColorPurple).
+			SetTextColor(tcell.ColorWhite).
+			SetAttributes(tcell.AttrBold).
+			SetSelectable(false)
+	}
+
+	task, err := t.GetTaskByIndex(row - 1)
+	if err != nil {
+		return tview.NewTableCell("")
+	}
+
+	switch col {
+	case 0:
+		return tview.NewTableCell(string(task.Video.Id))
+	case 1:
+		return tview.NewTableCell(fmt.Sprintf("%.10s", task.Video.ChannelName))
+	case 2:
+		return tview.NewTableCell(fmt.Sprintf("%.30s", task.Video.Title))
+	case 3:
+		return tview.NewTableCell(string(task.Step))
+	case 4:
+		return tview.NewTableCell(task.Progress)
+	}
+
+	return tview.NewTableCell("")
+}
+
+// GetColumnCount returns the number of columns in the table.
+func (t *TaskManager) GetColumnCount() int {
+	return 5
+}
+
+// GetRowCount returns the number of rows in the table.
+func (t *TaskManager) GetRowCount() int {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	// +1 for the header
+	return t.tasks.Len() + 1
 }

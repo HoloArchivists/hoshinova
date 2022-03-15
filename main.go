@@ -4,13 +4,13 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/logger"
 	"github.com/hizkifw/hoshinova/notifier"
 	"github.com/hizkifw/hoshinova/recorder"
 	"github.com/hizkifw/hoshinova/taskman"
+	"github.com/hizkifw/hoshinova/tui"
 	"github.com/hizkifw/hoshinova/uploader"
 	"github.com/hizkifw/hoshinova/util"
 	"github.com/hizkifw/hoshinova/watcher"
@@ -22,7 +22,7 @@ func main() {
 		panic(err)
 	}
 
-	lg := logger.New(logger.LogLevelDebug)
+	lg := logger.New(logger.LogLevelInfo)
 	tm := taskman.New(cfg, lg)
 
 	// Create context
@@ -76,20 +76,18 @@ func main() {
 		}
 	})
 
-	// Print the table of tasks every 5 seconds
-	go func() {
-		for {
-			tm.ClearOldTasks()
-			tm.PrintTable()
-			time.Sleep(5 * time.Second)
-		}
-	}()
-
 	// Handle interrupt
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	<-c
-	cancel()
+
+	ui := tui.New(ctx, cancel)
+	go ui.Run(ctx)
+
+	select {
+	case <-c:
+		cancel()
+	case <-ctx.Done():
+	}
 
 	lg.Info("Waiting for all goroutines to finish...")
 	lg.Info("Press Ctrl+C again to force exit")
