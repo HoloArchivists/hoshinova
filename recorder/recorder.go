@@ -35,7 +35,7 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 
 	// The callback writer will receive the output from the command and parse it.
 	yta := NewYTA()
-	cw := NewCallbackWriter(func(line string) {
+	cw := util.NewCallbackWriter(func(line string) {
 		yta.ParseLine(line)
 		tm.UpdateProgress(task.Video.Id, yta.TotalSize)
 

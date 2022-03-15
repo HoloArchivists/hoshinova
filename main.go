@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/hizkifw/hoshinova/notifier"
 	"github.com/hizkifw/hoshinova/recorder"
 	"github.com/hizkifw/hoshinova/taskman"
-	"github.com/hizkifw/hoshinova/tui"
 	"github.com/hizkifw/hoshinova/uploader"
 	"github.com/hizkifw/hoshinova/util"
 	"github.com/hizkifw/hoshinova/watcher"
@@ -26,15 +26,13 @@ func main() {
 	lg := logger.New(logger.LogLevelDebug)
 	tm := taskman.New(cfg, lg)
 
+	lg.Info("Starting hoshinova")
+
 	// Create context
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = util.WithLogger(ctx, lg)
 	ctx = util.WithConfig(ctx, cfg)
 	ctx = util.WithTaskManager(ctx, tm)
-
-	// Set up TUI
-	go tui.New().Run(ctx, cancel)
-	time.Sleep(time.Millisecond * 100)
 
 	var uploaders []uploader.Uploader
 	var notifiers []notifier.Notifier
@@ -87,20 +85,34 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
-	select {
-	case <-c:
-		time.Sleep(time.Second)
-		lg.Info("Interrupted")
-		cancel()
-	case <-ctx.Done():
-		time.Sleep(time.Second)
-		lg.Debug("Context done")
-	}
+	// Print table when the program is interrupted
+	lg.Info("Application started. Press Ctrl+C once to print the status, twice to exit.")
+	func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-c:
+				fmt.Println("")
+				tm.PrintTable()
+				lg.Info("Press Ctrl+C again to exit")
+
+				select {
+				case <-c:
+					return
+				case <-time.After(time.Second):
+				}
+			}
+		}
+	}()
+	cancel()
 
 	lg.Info("Waiting for all goroutines to finish...")
 	lg.Info("Press Ctrl+C again to force exit")
 	go func() {
 		<-c
+		lg.Info("Force exiting")
 		os.Exit(1)
 	}()
 	wg.Wait()

@@ -1,0 +1,26 @@
+[INFO] Starting TUI
+[INFO] Watching 7 channels
+[DEBUG] Watching channel: Mumei
+[DEBUG] Watching channel: Choco
+[DEBUG] Watching channel: Vanced
+[DEBUG] Watching channel: Moona
+[DEBUG] Watching channel: Okayu
+[DEBUG] Watching channel: KaguraMea
+[DEBUG] Watching channel: Karin
+[INFO] New video (Tru7a3MM8hI): 【KU100/ASMR】密着囁きが腰にクる♥脳までとろける高音質な耳責めASMR♥【耳はむ,耳かき,吐息】EarCleaning,Mouthsound,Whispering,RelaxSleeping
+[DEBUG] Created temporary working directory /tmp/hsnv__Tru7a3MM8hI__3036818380 for video Tru7a3MM8hI
+[DEBUG] [Tru7a3MM8hI] starting ytarchive
+[DEBUG] starting ytarchive video_id Tru7a3MM8hI
+[INFO] New video (JVu6TjQhe4Q): CSGO: One of my favorite rounds in casual
+[DEBUG] Created temporary working directory /tmp/hsnv__JVu6TjQhe4Q__4236271936 for video JVu6TjQhe4Q
+[DEBUG] [JVu6TjQhe4Q] starting ytarchive
+[DEBUG] starting ytarchive video_id JVu6TjQhe4Q
+[INFO] New video (NsmxEfCDt1k): 【Sea of Thieves】Continue our journey! AREA15 Here!【Area15】
+[DEBUG] Created temporary working directory /tmp/hsnv__NsmxEfCDt1k__2682252866 for video NsmxEfCDt1k
+[DEBUG] [NsmxEfCDt1k] starting ytarchive
+[DEBUG] starting ytarchive video_id NsmxEfCDt1k
+[ERROR] ytarchive exited with 1 for JVu6TjQhe4Q
+[DEBUG] [JVu6TjQhe4Q] Task state changed to errored
+[DEBUG] Removing temporary working directory /tmp/hsnv__JVu6TjQhe4Q__4236271936 for video JVu6TjQhe4Q
+[DEBUG] [Tru7a3MM8hI] Task state changed to recording
+[DEBUG] [NsmxEfCDt1k] Task state changed to recording
