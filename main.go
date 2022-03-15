@@ -72,10 +72,15 @@ func main() {
 				tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 				return
 			}
+			lg.Debug("Uploaded", task.Video.Id, res)
 
-			for _, not := range notifiers {
-				lg.Debug("Notifying", task.Video.Id)
-				not.NotifyUploaded(ctx, res)
+			for j, not := range notifiers {
+				lg.Debug("Notifying", task.Video.Id, "with", cfg.Notifiers[j].Type)
+				if err := not.NotifyUploaded(ctx, res); err != nil {
+					lg.Error("Error notifying", task.Video.Id, err)
+					tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+					return
+				}
 			}
 			tm.UpdateStep(task.Video.Id, taskman.StepDone)
 		}
@@ -106,6 +111,7 @@ func main() {
 			}
 		}
 	}()
+	lg.Debug("Cancelling the context")
 	cancel()
 
 	lg.Info("Waiting for all goroutines to finish...")

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
+	"time"
 
 	"github.com/hizkifw/hoshinova/taskman"
 	"github.com/hizkifw/hoshinova/util"
@@ -27,33 +29,39 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 		"ytarchive",
 		"--wait", "--vp9", "--merge",
 		"--thumbnail", "--add-metadata",
-		"--threads", "8",
+		"--threads", "4",
 		"--output", "%(id)s",
 		url, "best",
 	)
 	cmd.Dir = task.WorkingDirectory
 
+	// Start the process in a separate process group. This prevents signals from
+	// being sent to the child processes.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 	// The callback writer will receive the output from the command and parse it.
 	yta := NewYTA()
+	db := util.NewDebounce(time.Second)
 	cw := util.NewCallbackWriter(func(line string) {
 		yta.ParseLine(line)
-		tm.UpdateProgress(task.Video.Id, yta.TotalSize)
 
 		switch yta.State {
 		case YTAStateWaiting:
 			tm.UpdateStep(task.Video.Id, taskman.StepWaitingForLive)
 		case YTAStateRecording:
+			if !db.Check() {
+				return
+			}
 			tm.UpdateStep(task.Video.Id, taskman.StepRecording)
+			tm.UpdateProgress(task.Video.Id, yta.TotalSize)
 		case YTAStateMuxing:
 			tm.UpdateStep(task.Video.Id, taskman.StepMuxing)
-		case YTAStateFinished:
-			// Set to idle instead of done. Only set to done after the file has been
-			// uploaded and the notification has been sent.
-			tm.UpdateStep(task.Video.Id, taskman.StepIdle)
 		case YTAStateError:
 			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 		case YTAStateInterrupted:
 			tm.UpdateStep(task.Video.Id, taskman.StepCancelled)
+		case YTAStateFinished:
+			tm.UpdateStep(task.Video.Id, taskman.StepIdle)
 		}
 	})
 
@@ -98,14 +106,16 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 func waitForExitCode(cmd *exec.Cmd) int {
 	for {
 		if err := cmd.Wait(); err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				code := exitErr.ExitCode()
-
-				if err.Error() == "signal: interrupt" {
-					continue
-				}
-				return code
+			if !cmd.ProcessState.Exited() {
+				continue
 			}
+
+			return cmd.ProcessState.ExitCode()
+
+			// if exitErr, ok := err.(*exec.ExitError); ok {
+			// code := exitErr.ExitCode()
+			// return code
+			// }
 		}
 	}
 }

@@ -71,7 +71,24 @@ func NewYTA() *YTA {
 func (y *YTA) ParseLine(line string) {
 	y.LastOutput = line
 
-	// Check for the version.
+	// Parse the video and audio fragment counts.
+	if strings.HasPrefix(line, "Video Fragments: ") {
+		parts := strings.Split(line, "; ")
+		if len(parts) != 2 {
+			return
+		}
+
+		y.VideoFragments, _ = strconv.Atoi(
+			strings.TrimPrefix(parts[0], "Video Fragments: "),
+		)
+		y.AudioFragments, _ = strconv.Atoi(
+			strings.TrimPrefix(parts[1], "Audio Fragments: "),
+		)
+		y.TotalSize = stripansi.Strip(
+			strings.TrimPrefix(parts[2], "Total Downloaded: "),
+		)
+	}
+
 	if y.Version == "" {
 		if strings.HasPrefix(line, "ytarchive ") {
 			y.Version = strings.TrimPrefix(line, "ytarchive ")
@@ -88,26 +105,6 @@ func (y *YTA) ParseLine(line string) {
 		y.VideoQuality = stripansi.Strip(
 			strings.TrimPrefix(line, "Selected quality: "),
 		)
-	}
-
-	// Parse the video and audio fragment counts.
-	if strings.HasPrefix(line, "Video Fragments: ") {
-		parts := strings.Split(line, "; ")
-		for _, part := range parts {
-			if strings.HasPrefix(part, "Video Fragments: ") {
-				y.VideoFragments, _ = strconv.Atoi(
-					strings.TrimPrefix(part, "Video Fragments: "),
-				)
-			} else if strings.HasPrefix(part, "Audio Fragments: ") {
-				y.AudioFragments, _ = strconv.Atoi(
-					strings.TrimPrefix(part, "Audio Fragments: "),
-				)
-			} else if strings.HasPrefix(part, "Total Downloaded: ") {
-				y.TotalSize = stripansi.Strip(
-					strings.TrimPrefix(part, "Total Downloaded: "),
-				)
-			}
-		}
 	}
 
 	if strings.HasPrefix(line, "Muxing final file...") {

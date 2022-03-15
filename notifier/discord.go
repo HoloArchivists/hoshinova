@@ -22,11 +22,14 @@ func NewDiscord(webhookURL string) Notifier {
 }
 
 func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.UploadResult) error {
+	lg := util.GetLogger(ctx)
 	tm := util.GetTaskManager(ctx)
-	task, err := tm.Get(notification.VideoID)
-	if err != nil {
-		return err
+	task, ok := tm.Get(notification.VideoID)
+	if !ok {
+		return fmt.Errorf("task not found")
 	}
+
+	lg.Debug("notify uploaded", "video_id", notification.VideoID)
 
 	// Set up http client
 	client := &http.Client{}
@@ -54,6 +57,8 @@ func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.Upl
 		},
 	}
 
+	lg.Debug("Encoding message", "message", message)
+
 	// Encode message
 	jsonMessage, err := json.Marshal(message)
 	if err != nil {
@@ -70,13 +75,17 @@ func (d *Discord) NotifyUploaded(ctx context.Context, notification *uploader.Upl
 	// Attach context
 	req = req.WithContext(ctx)
 
+	lg.Debug("Sending message", "message", string(jsonMessage))
+
 	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 
-	if resp.StatusCode != 200 {
+	lg.Debug("Response", "status", resp.Status)
+
+	if resp.StatusCode != 204 {
 		return fmt.Errorf("Discord returned status code %d", resp.StatusCode)
 	}
 

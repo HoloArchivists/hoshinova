@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/hizkifw/hoshinova/config"
@@ -58,7 +57,6 @@ type LogEntry struct {
 
 type TaskManager struct {
 	tasks  *TaskMap
-	lock   sync.RWMutex
 	config *config.Config
 	logger logger.Logger
 }
@@ -72,9 +70,6 @@ func New(config *config.Config, logger logger.Logger) *TaskManager {
 }
 
 func (t *TaskManager) Insert(video Video) (*Task, error) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
 	// Check if the task already exists
 	if _, ok := t.tasks.Get(video.Id); ok {
 		return nil, ErrTaskAlreadyExists
@@ -107,16 +102,11 @@ func (t *TaskManager) Insert(video Video) (*Task, error) {
 	return &task, nil
 }
 
-func (t *TaskManager) Get(videoId VideoId) (*Task, error) {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-	return t.Get(videoId)
+func (t *TaskManager) Get(videoId VideoId) (*Task, bool) {
+	return t.tasks.Get(videoId)
 }
 
 func (t *TaskManager) GetAll() []Task {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
 	tasks := make([]Task, 0, t.tasks.Len())
 	for task := range t.tasks.Iter() {
 		tasks = append(tasks, *task)
@@ -126,9 +116,6 @@ func (t *TaskManager) GetAll() []Task {
 }
 
 func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
 	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
@@ -160,9 +147,6 @@ func IsDirectoryEmpty(name string) (bool, error) {
 }
 
 func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
 	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
@@ -205,9 +189,6 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 }
 
 func (t *TaskManager) UpdateProgress(videoId VideoId, progress string) error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
 	task, ok := t.tasks.Get(videoId)
 	if !ok {
 		return ErrTaskNotFound
@@ -220,9 +201,6 @@ func (t *TaskManager) UpdateProgress(videoId VideoId, progress string) error {
 }
 
 func (t *TaskManager) PrintTable() {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
 	tbl := table.NewWriter()
 	tbl.SetOutputMirror(os.Stdout)
 	tbl.AppendHeader(table.Row{"Video Id", "Channel", "Title", "Status", "Progress"})
@@ -246,9 +224,6 @@ func (t *TaskManager) PrintTable() {
 }
 
 func (t *TaskManager) ClearOldTasks() {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
 	for task := range t.tasks.Iter() {
 		if (task.Step == StepDone || task.Step == StepErrored) &&
 			time.Since(task.LastStepUpdate) > time.Hour*24*7 {
@@ -260,9 +235,6 @@ func (t *TaskManager) ClearOldTasks() {
 // GetTaskByIndex returns the task at the given index, sorted by the time the
 // task was created.
 func (t *TaskManager) GetTaskByIndex(index int) (*Task, error) {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
 	if index < 0 || index >= t.tasks.Len() {
 		return nil, ErrTaskNotFound
 	}
