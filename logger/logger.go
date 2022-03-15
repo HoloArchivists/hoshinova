@@ -1,6 +1,11 @@
 package logger
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"os"
+	"sync"
+)
 
 type LogLevel int
 
@@ -10,6 +15,16 @@ const (
 	LogLevelWarn
 	LogLevelError
 	LogLevelFatal
+)
+
+var (
+	logLevelStrings = [...]string{
+		"DEBUG",
+		"INFO",
+		"WARN",
+		"ERROR",
+		"FATAL",
+	}
 )
 
 type Logger interface {
@@ -27,25 +42,59 @@ type Logger interface {
 
 	GetLogLevel() LogLevel
 	SetLogLevel(level LogLevel)
+
+	GetOutput() io.Writer
+	SetOutput(io.Writer)
 }
 
 type logger struct {
-	level LogLevel
+	level      LogLevel
+	output     io.Writer
+	outputLock sync.RWMutex
+	logLock    sync.Mutex
 }
 
 func New(level LogLevel) Logger {
-	return &logger{level: level}
+	return &logger{level: level, output: os.Stdout}
+}
+
+func (l *logger) GetOutput() io.Writer {
+	l.outputLock.RLock()
+	defer l.outputLock.RUnlock()
+
+	return l.output
+}
+
+func (l *logger) SetOutput(w io.Writer) {
+	l.outputLock.Lock()
+	defer l.outputLock.Unlock()
+
+	l.output = w
 }
 
 func (l *logger) log(level LogLevel, args ...interface{}) {
+	l.outputLock.RLock()
+	defer l.outputLock.RUnlock()
+
+	l.logLock.Lock()
+	defer l.logLock.Unlock()
+
 	if l.level <= level {
-		fmt.Println(args...)
+		fmt.Fprintf(l.output, "[%s] ", logLevelStrings[level])
+		fmt.Fprintln(l.output, args...)
 	}
 }
 
 func (l *logger) logf(level LogLevel, format string, args ...interface{}) {
+	l.outputLock.RLock()
+	defer l.outputLock.RUnlock()
+
+	l.logLock.Lock()
+	defer l.logLock.Unlock()
+
 	if l.level <= level {
-		fmt.Printf(format, args...)
+		fmt.Fprintf(l.output, "[%s] ", logLevelStrings[level])
+		fmt.Fprintf(l.output, format, args...)
 	}
 }
 

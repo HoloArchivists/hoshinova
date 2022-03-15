@@ -23,6 +23,9 @@ func Watch(ctx context.Context, callback func(*taskman.Task)) *sync.WaitGroup {
 			wg.Add(1)
 			defer wg.Done()
 
+			lg.Debug("Watching channel:", channel.Name)
+			defer lg.Debug("Stopped watching channel:", channel.Name)
+
 			p := Poller{Channel: &channel}
 			p.WatchChannel(ctx, callback)
 		}(c)

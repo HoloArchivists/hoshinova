@@ -47,7 +47,9 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 		case YTAStateMuxing:
 			tm.UpdateStep(task.Video.Id, taskman.StepMuxing)
 		case YTAStateFinished:
-			tm.UpdateStep(task.Video.Id, taskman.StepDone)
+			// Set to idle instead of done. Only set to done after the file has been
+			// uploaded and the notification has been sent.
+			tm.UpdateStep(task.Video.Id, taskman.StepIdle)
 		case YTAStateError:
 			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 		case YTAStateInterrupted:
@@ -71,7 +73,7 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			lg.Debug("ytarchive context cancelled, sending interrupt signal")
+			lg.Debug("Interrupting ytarchive for", "video_id", task.Video.Id)
 			cmd.Process.Signal(os.Interrupt)
 		case <-finished:
 		}
@@ -81,7 +83,7 @@ func Record(ctx context.Context, task *taskman.Task) (*Recording, error) {
 	code := waitForExitCode(cmd)
 	finished <- true
 	if code != 0 {
-		lg.Error("ytarchive failed", "exit_code", code)
+		lg.Error("ytarchive exited with", code, "for", task.Video.Id)
 		return nil, fmt.Errorf("ytarchive failed with exit code %d", code)
 	}
 
@@ -98,11 +100,10 @@ func waitForExitCode(cmd *exec.Cmd) int {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
 
-				// Exit code -1 means the process received a signal. We only want to
-				// return if the process has exited.
-				if code != -1 {
-					return code
+				if err.Error() == "signal: interrupt" {
+					continue
 				}
+				return code
 			}
 		}
 	}

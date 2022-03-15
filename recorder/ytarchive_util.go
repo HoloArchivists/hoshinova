@@ -3,6 +3,8 @@ package recorder
 import (
 	"strconv"
 	"strings"
+
+	"github.com/acarl005/stripansi"
 )
 
 type YTAState string
@@ -83,7 +85,9 @@ func (y *YTA) ParseLine(line string) {
 
 	if strings.HasPrefix(line, "Selected quality: ") {
 		y.State = YTAStateRecording
-		y.VideoQuality = strings.TrimPrefix(line, "Selected quality: ")
+		y.VideoQuality = stripansi.Strip(
+			strings.TrimPrefix(line, "Selected quality: "),
+		)
 	}
 
 	// Parse the video and audio fragment counts.
@@ -99,7 +103,9 @@ func (y *YTA) ParseLine(line string) {
 					strings.TrimPrefix(part, "Audio Fragments: "),
 				)
 			} else if strings.HasPrefix(part, "Total Downloaded: ") {
-				y.TotalSize = strings.TrimPrefix(part, "Total Downloaded: ")
+				y.TotalSize = stripansi.Strip(
+					strings.TrimPrefix(part, "Total Downloaded: "),
+				)
 			}
 		}
 	}
@@ -114,7 +120,9 @@ func (y *YTA) ParseLine(line string) {
 
 	if strings.HasPrefix(line, "Final file: ") {
 		y.State = YTAStateFinished
-		y.OutputFile = strings.TrimPrefix(line, "Final file: ")
+		y.OutputFile = stripansi.Strip(
+			strings.TrimPrefix(line, "Final file: "),
+		)
 	}
 
 	if strings.HasPrefix(line, "Livestream has been processed.") {

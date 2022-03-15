@@ -4,9 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/logger"
-	"github.com/hizkifw/hoshinova/taskman"
 	"github.com/hizkifw/hoshinova/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -14,18 +11,18 @@ import (
 )
 
 type Tui struct {
-	app    *tview.Application
-	cfg    *config.Config
-	tm     *taskman.TaskManager
-	cancel context.CancelFunc
+	app *tview.Application
 }
 
-func New(ctx context.Context, cancel context.CancelFunc) *Tui {
-	cfg := util.GetConfig(ctx)
+func New() *Tui {
+	app := tview.NewApplication()
+	return &Tui{app}
+}
+
+func (t *Tui) Run(ctx context.Context, cancel context.CancelFunc) error {
 	tm := util.GetTaskManager(ctx)
 
-	// Create a new tview application.
-	app := tview.NewApplication()
+	// Table of tasks
 	table := tview.NewTable().
 		SetFixed(1, 1).
 		SetSelectable(true, false).
@@ -35,11 +32,36 @@ func New(ctx context.Context, cancel context.CancelFunc) *Tui {
 		SetContent(tm).
 		SetDoneFunc(func(key tcell.Key) {
 			if key == tcell.KeyCtrlC {
-				app.Stop()
+				t.app.Stop()
 				cancel()
 			}
 		})
-	app.SetRoot(table, true).SetFocus(table)
+	table.
+		SetTitle("Tasks").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorder(true)
+
+	// TextView for logs
+	logs := tview.NewTextView().
+		SetDynamicColors(false).
+		SetScrollable(true).
+		SetWordWrap(true).
+		SetChangedFunc(func() {
+			t.app.Draw()
+		})
+	logs.
+		SetTitle("Logs").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorder(true)
+
+	// Grid layout
+	grid := tview.NewGrid().
+		SetRows(0, 0).
+		SetColumns(0).
+		AddItem(table, 0, 0, 1, 1, 0, 0, true).
+		AddItem(logs, 1, 0, 1, 1, 0, 0, false)
+
+	t.app.SetRoot(grid, true).SetFocus(table)
 
 	// Force a redraw every second.
 	go func() {
@@ -48,20 +70,18 @@ func New(ctx context.Context, cancel context.CancelFunc) *Tui {
 			case <-ctx.Done():
 				return
 			case <-time.After(time.Second):
-				app.Draw()
+				t.app.Draw()
 			}
 		}
 	}()
+	defer cancel()
 
-	return &Tui{app, cfg, tm, cancel}
-}
-
-func (t *Tui) Run(ctx context.Context) error {
+	// Redirect logs to the text view.
 	lg := util.GetLogger(ctx)
-	lastLogLevel := lg.GetLogLevel()
-	lg.SetLogLevel(logger.LogLevelFatal)
-	defer lg.SetLogLevel(lastLogLevel)
-	defer t.cancel()
+	lastOutput := lg.GetOutput()
+	defer lg.SetOutput(lastOutput)
+	lg.SetOutput(logs)
 
+	lg.Info("Starting TUI")
 	return t.app.Run()
 }

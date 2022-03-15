@@ -3,6 +3,7 @@ package taskman
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -89,7 +90,7 @@ func (t *TaskManager) Insert(video Video) (*Task, error) {
 	}
 
 	// Create a temporary working directory
-	workdir, err := os.MkdirTemp("", "hoshinova")
+	workdir, err := os.MkdirTemp("", "hsnv__"+string(video.Id)+"__")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary working directory: %w", err)
 	}
@@ -142,6 +143,7 @@ func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
 		return ErrTaskNotFound
 	}
 
+	t.logger.Debugf("[%s] %s\n", videoId, message)
 	task.Logs = append(task.Logs, LogEntry{
 		Time:    time.Now(),
 		Message: message,
@@ -150,6 +152,20 @@ func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
 	t.tasks.Set(videoId, task)
 
 	return nil
+}
+
+func IsDirectoryEmpty(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
 }
 
 func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
@@ -166,17 +182,32 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 	}
 
 	task.Step = step
+	logMessage := "Task state changed to " + string(step)
 	task.Logs = append(task.Logs, LogEntry{
 		Time:    time.Now(),
-		Message: "Task state changed to " + string(step),
+		Message: logMessage,
 	})
 	task.LastStepUpdate = time.Now()
 	t.tasks.Set(videoId, task)
+	t.logger.Debugf("[%s] %s\n", videoId, logMessage)
 
 	// If the task is done, remove the working directory
 	if step == StepDone {
-		t.logger.Debug("Removing temporary working directory %s for video %s\n", task.WorkingDirectory, videoId)
-		os.RemoveAll(task.WorkingDirectory)
+		t.logger.Debugf("Removing temporary working directory %s for video %s\n", task.WorkingDirectory, videoId)
+		if err := os.RemoveAll(task.WorkingDirectory); err != nil {
+			t.logger.Errorf("Failed to remove temporary working directory %s for video %s: %w\n", task.WorkingDirectory, videoId, err)
+		}
+	}
+
+	// If task is errored, remove the working directory only if the directory is
+	// empty.
+	if step == StepErrored {
+		if empty, _ := IsDirectoryEmpty(task.WorkingDirectory); empty {
+			t.logger.Debugf("Removing temporary working directory %s for video %s\n", task.WorkingDirectory, videoId)
+			if err := os.RemoveAll(task.WorkingDirectory); err != nil {
+				t.logger.Errorf("Failed to remove temporary working directory %s for video %s: %w\n", task.WorkingDirectory, videoId, err)
+			}
+		}
 	}
 
 	return nil

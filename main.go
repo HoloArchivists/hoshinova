@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/logger"
@@ -22,7 +23,7 @@ func main() {
 		panic(err)
 	}
 
-	lg := logger.New(logger.LogLevelInfo)
+	lg := logger.New(logger.LogLevelDebug)
 	tm := taskman.New(cfg, lg)
 
 	// Create context
@@ -30,6 +31,10 @@ func main() {
 	ctx = util.WithLogger(ctx, lg)
 	ctx = util.WithConfig(ctx, cfg)
 	ctx = util.WithTaskManager(ctx, tm)
+
+	// Set up TUI
+	go tui.New().Run(ctx, cancel)
+	time.Sleep(time.Millisecond * 100)
 
 	var uploaders []uploader.Uploader
 	var notifiers []notifier.Notifier
@@ -56,7 +61,6 @@ func main() {
 	wg := watcher.Watch(ctx, func(task *taskman.Task) {
 		rec, err := recorder.Record(ctx, task)
 		if err != nil {
-			lg.Error("Error recording:", err)
 			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 			return
 		}
@@ -64,7 +68,7 @@ func main() {
 		for _, upl := range uploaders {
 			res, err := upl.Upload(ctx, rec)
 			if err != nil {
-				lg.Error("Error uploading:", err)
+				lg.Error("Error uploading", task.Video.Id, err)
 				tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 				return
 			}
@@ -80,13 +84,14 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
-	ui := tui.New(ctx, cancel)
-	go ui.Run(ctx)
-
 	select {
 	case <-c:
+		time.Sleep(time.Second)
+		lg.Info("Interrupted")
 		cancel()
 	case <-ctx.Done():
+		time.Sleep(time.Second)
+		lg.Debug("Context done")
 	}
 
 	lg.Info("Waiting for all goroutines to finish...")
