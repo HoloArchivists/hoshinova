@@ -56,9 +56,10 @@ In the example above, the `(?i)` marks the expression as case-insensitive.
 
 ```yaml
 uploaders:
-  - type: local
+  - name: My Videos folder
+    type: local
     config:
-      path: /tmp/hoshinova
+      path: /home/kitsune/Videos
       base_url: http://localhost:3000
 ```
 
@@ -74,8 +75,8 @@ Drive, S3, etc.
 
 ```yaml
 notifiers:
-  - type: discord
-    config:
+  - name: My private server
+    type: discord
       webhook_url: 'https://discord.com/api/webhooks/...'
 ```
 
