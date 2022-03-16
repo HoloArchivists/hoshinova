@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/acarl005/stripansi"
+	"github.com/hizkifw/hoshinova/util"
 )
 
 type YTAState string
@@ -19,6 +19,8 @@ const (
 	YTAStateInterrupted YTAState = "interrupted"
 )
 
+// YTA is the struct that represents the output and current state of a ytarchive
+// process.
 type YTA struct {
 	// The version of ytarchive that is currently running. If unknown, this
 	// will be set to an empty string.
@@ -85,7 +87,7 @@ func (y *YTA) ParseLine(line string) {
 		y.AudioFragments, _ = strconv.Atoi(
 			strings.TrimPrefix(parts[1], "Audio Fragments: "),
 		)
-		y.TotalSize = stripansi.Strip(
+		y.TotalSize = util.StripANSI(
 			strings.TrimPrefix(parts[2], "Total Downloaded: "),
 		)
 	}
@@ -102,7 +104,7 @@ func (y *YTA) ParseLine(line string) {
 	}
 
 	if strings.HasPrefix(line, "Selected quality: ") {
-		y.VideoQuality = stripansi.Strip(
+		y.VideoQuality = util.StripANSI(
 			strings.TrimPrefix(line, "Selected quality: "),
 		)
 	}
@@ -117,7 +119,7 @@ func (y *YTA) ParseLine(line string) {
 
 	if strings.HasPrefix(line, "Final file: ") {
 		y.State = YTAStateFinished
-		y.OutputFile = stripansi.Strip(
+		y.OutputFile = util.StripANSI(
 			strings.TrimPrefix(line, "Final file: "),
 		)
 	}

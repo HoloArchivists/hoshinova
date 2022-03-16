@@ -2,20 +2,24 @@ package util
 
 import "time"
 
+// Debounce provides a function that will only return true once every
+// d duration.
 type Debounce struct {
-	d time.Duration
-	t time.Time
+	duration time.Duration
+	lastCall time.Time
 }
 
+// NewDebounce returns a new debounce.
 func NewDebounce(d time.Duration) *Debounce {
 	return &Debounce{
-		d: d,
+		duration: d,
 	}
 }
 
+// Check returns true if it has not been called in d duration.
 func (d *Debounce) Check() bool {
-	if time.Since(d.t) > d.d {
-		d.t = time.Now()
+	if time.Since(d.lastCall) > d.duration {
+		d.lastCall = time.Now()
 		return true
 	}
 	return false

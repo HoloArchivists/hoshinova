@@ -23,11 +23,15 @@ Copy the `config.example.yaml` to `config.yaml` and edit the file as needed.
 
 ```yaml
 poll_interval: 60
+workdir: /tmp
 ```
 
 The `poll_interval` is how long (in seconds) to wait before checking the
 channel's RSS feed for new videos. There is no known rate limit for the RSS
 endpoint so feel free to adjust this parameter.
+
+Workdir is where all temporary files will be stored. Stream fragments,
+unfinished downloads, etc.
 
 ### Channel configuration
 

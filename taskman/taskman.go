@@ -76,7 +76,7 @@ func (t *TaskManager) Insert(video Video) (*Task, error) {
 	}
 
 	// Create a temporary working directory
-	workdir, err := os.MkdirTemp("", "hsnv__"+string(video.Id)+"__")
+	workdir, err := os.MkdirTemp(t.config.Workdir, "hsnv__"+string(video.Id)+"__")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary working directory: %w", err)
 	}
@@ -121,7 +121,7 @@ func (t *TaskManager) LogEvent(videoId VideoId, message string) error {
 		return ErrTaskNotFound
 	}
 
-	t.logger.Debugf("[%s] %s\n", videoId, message)
+	t.logger.Debugf("(%s) %s\n", videoId, message)
 	task.Logs = append(task.Logs, LogEntry{
 		Time:    time.Now(),
 		Message: message,
@@ -164,7 +164,7 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 	})
 	task.LastStepUpdate = time.Now()
 	t.tasks.Set(videoId, task)
-	t.logger.Debugf("[%s] %s\n", videoId, logMessage)
+	t.logger.Debugf("(%s) %s\n", videoId, logMessage)
 
 	// If the task is done, remove the working directory
 	if step == StepDone {

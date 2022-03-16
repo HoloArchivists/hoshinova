@@ -1,5 +1,19 @@
+# hoshinova example config file
+# copy this file to config.yaml and update it as needed
+
+# The number of seconds to wait between checking if a channel has any new
+# videos.
 poll_interval: 60
 
+# Where to store all temporary files
+workdir: /tmp
+
+# Logging configuration
+logging:
+  # Log level: one of debug, info, warn, error, fatal
+  level: info
+
+# The list of YouTube channels to monitor
 channels:
 - name: Moona
   id: UCP0BspO_AMEe3aQqqpo89Dg
@@ -12,13 +26,18 @@ channels:
   filters:
   - '(?i)ASMR'
 
+# List of destinations where the video files will go to after it is finished
+# downloading.
 uploaders:
-- type: local
+- name: My Videos folder
+  type: local
   config:
-    path: /tmp/hoshinova
+    path: /home/kitsune/Videos
     base_url: http://localhost:3000
 
+# List of places to notify when a video is uploaded.
 notifiers:
-- type: discord
+- name: My private server
+  type: discord
   config:
     webhook_url: 'https://discord.com/api/webhooks/...'

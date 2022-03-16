@@ -23,9 +23,10 @@ func main() {
 		panic(err)
 	}
 
-	lg := logger.New(logger.LogLevelDebug)
+	lg := logger.New(cfg.Logging.Level)
 	tm := taskman.New(cfg, lg)
 
+	lg.Info("Using log level", cfg.Logging.Level)
 	lg.Info("Starting hoshinova")
 
 	// Create context
@@ -65,7 +66,7 @@ func main() {
 		lg.Debug("Recording finished", rec)
 
 		for i, upl := range uploaders {
-			lg.Info("Uploading", task.Video.Id, "to", cfg.Uploaders[i].Type)
+			lg.Info("Uploading", task.Video.Id, "to", cfg.Uploaders[i].Name)
 			res, err := upl.Upload(ctx, rec)
 			if err != nil {
 				lg.Error("Error uploading", task.Video.Id, err)
@@ -75,7 +76,7 @@ func main() {
 			lg.Debug("Uploaded", task.Video.Id, res)
 
 			for j, not := range notifiers {
-				lg.Debug("Notifying", task.Video.Id, "with", cfg.Notifiers[j].Type)
+				lg.Debug("Notifying", task.Video.Id, "with", cfg.Notifiers[j].Name)
 				if err := not.NotifyUploaded(ctx, res); err != nil {
 					lg.Error("Error notifying", task.Video.Id, err)
 					tm.UpdateStep(task.Video.Id, taskman.StepErrored)

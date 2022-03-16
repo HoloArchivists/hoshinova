@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"regexp"
 
+	"github.com/hizkifw/hoshinova/logger"
 	"gopkg.in/yaml.v2"
 )
 
@@ -11,9 +12,22 @@ type Regexp regexp.Regexp
 
 type Config struct {
 	PollInterval int        `yaml:"poll_interval"`
+	Workdir      string     `yaml:"workdir"`
+	Logging      Logging    `yaml:"logging"`
+	YTArchive    YTArchive  `yaml:"ytarchive"`
 	Channels     []Channel  `yaml:"channels"`
 	Uploaders    []Uploader `yaml:"uploaders"`
 	Notifiers    []Notifier `yaml:"notifiers"`
+}
+
+type Logging struct {
+	Level logger.LogLevel `yaml:"level"`
+}
+
+type YTArchive struct {
+	Path    string `yaml:"path"`
+	VP9     bool   `yaml:"vp9"`
+	Quality string `yaml:"quality"`
 }
 
 type Channel struct {
@@ -23,11 +37,13 @@ type Channel struct {
 }
 
 type Uploader struct {
+	Name   string            `yaml:"name"`
 	Type   string            `yaml:"type"`
 	Config map[string]string `yaml:"config"`
 }
 
 type Notifier struct {
+	Name   string            `yaml:"name"`
 	Type   string            `yaml:"type"`
 	Config map[string]string `yaml:"config"`
 }

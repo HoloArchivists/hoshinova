@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -26,6 +27,31 @@ var (
 		"FATAL",
 	}
 )
+
+func ParseLogLevel(level string) (LogLevel, error) {
+	for i, s := range logLevelStrings {
+		if s == strings.ToUpper(level) {
+			return LogLevel(i), nil
+		}
+	}
+
+	return LogLevelDebug, fmt.Errorf("invalid log level: %s", level)
+}
+
+func (l *LogLevel) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	level, err := ParseLogLevel(s)
+	if err != nil {
+		return err
+	}
+
+	*l = level
+	return nil
+}
 
 type Logger interface {
 	Debug(args ...interface{})
