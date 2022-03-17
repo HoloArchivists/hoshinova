@@ -25,9 +25,9 @@ type Logging struct {
 }
 
 type YTArchive struct {
-	Path    string `yaml:"path"`
-	VP9     bool   `yaml:"vp9"`
-	Quality string `yaml:"quality"`
+	Path    string   `yaml:"path"`
+	Flags   []string `yaml:"flags"`
+	Quality string   `yaml:"quality"`
 }
 
 type Channel struct {

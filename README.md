@@ -5,8 +5,8 @@
 
 ![Screenshot](https://user-images.githubusercontent.com/7418049/158234855-255f8897-f8a6-40f1-a890-af34336e65b6.png)
 
-**⚠️ Untested Software**: This program is still under heavy development and will
-contain a lot of breaking changes.
+**⚠️ Unstable Software**: This program is under heavy development. It works, but
+will still undergo a lot of breaking changes. Upgrade with caution.
 
 ## Install
 
@@ -16,6 +16,8 @@ and executable in your PATH.
 ```
 go install github.com/hizkifw/hoshinova@main
 ```
+
+You should now have an executable `~/go/bin/hoshinova`.
 
 ## Configure
 
@@ -32,6 +34,25 @@ endpoint so feel free to adjust this parameter.
 
 Workdir is where all temporary files will be stored. Stream fragments,
 unfinished downloads, etc.
+
+### ytarchive configuration
+
+```yaml
+ytarchive:
+  path: ytarchive
+  quality: best
+  flags:
+    - '--vp9'
+    - '--thumbnail'
+    - '--add-metadata'
+    - '--threads'
+    - '4'
+    - '--output'
+    - '%(id)s'
+```
+
+By default, the `--wait` and `--merge` flags are added. You can add your own
+flags to use cookies, set the number of threads, etc.
 
 ### Channel configuration
 
@@ -85,8 +106,8 @@ Right now, only Discord is supported, but more will be added in the future.
 
 ## Run
 
-If running from source,
+If you used `go install`,
 
 ```
-go run .
+~/go/bin/hoshinova
 ```

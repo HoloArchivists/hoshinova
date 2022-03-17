@@ -58,7 +58,7 @@ func main() {
 
 	// Start watching the channels for new videos
 	wg := watcher.Watch(ctx, func(task *taskman.Task) {
-		rec, err := recorder.Record(ctx, task)
+		rec, err := recorder.RecordVideo(ctx, task)
 		if err != nil {
 			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
 			return

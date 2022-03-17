@@ -13,6 +13,19 @@ logging:
   # Log level: one of debug, info, warn, error, fatal
   level: info
 
+# Configuration for ytarchive
+ytarchive:
+  path: ytarchive
+  quality: best
+  flags:
+  - '--vp9'
+  - '--thumbnail'
+  - '--add-metadata'
+  - '--threads'
+  - '4'
+  - '--output'
+  - '%(id)s'
+
 # The list of YouTube channels to monitor
 channels:
 - name: Moona
