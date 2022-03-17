@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hizkifw/hoshinova/recorder"
 	"github.com/hizkifw/hoshinova/taskman"
@@ -39,8 +40,14 @@ func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadRe
 		return nil, err
 	}
 
+	publicURL := l.BaseURL
+	if !strings.HasSuffix(publicURL, "/") {
+		publicURL += "/"
+	}
+	publicURL += basename
+
 	return &UploadResult{
 		VideoID:   item.VideoID,
-		PublicURL: filepath.Join(l.BaseURL, basename),
+		PublicURL: publicURL,
 	}, nil
 }
