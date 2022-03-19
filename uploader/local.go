@@ -45,7 +45,7 @@ func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadRe
 	if !strings.HasSuffix(publicURL, "/") {
 		publicURL += "/"
 	}
-	publicURL += url.QueryEscape(basename)
+	publicURL += url.PathEscape(basename)
 
 	return &UploadResult{
 		VideoID:   item.VideoID,
