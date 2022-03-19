@@ -2,6 +2,7 @@ package uploader
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +45,7 @@ func (l *Local) Upload(ctx context.Context, item *recorder.Recording) (*UploadRe
 	if !strings.HasSuffix(publicURL, "/") {
 		publicURL += "/"
 	}
-	publicURL += basename
+	publicURL += url.QueryEscape(basename)
 
 	return &UploadResult{
 		VideoID:   item.VideoID,
