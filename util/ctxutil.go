@@ -50,8 +50,8 @@ func SleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// RunLoopContext runs the given function in a loop until the context is canceled.
-func RunLoopContext(ctx context.Context, f func()) error {
+// LoopUntilCancelled runs the given function in a loop until the context is canceled.
+func LoopUntilCancelled(ctx context.Context, f func()) error {
 	for {
 		select {
 		case <-ctx.Done():

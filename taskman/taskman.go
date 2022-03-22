@@ -9,6 +9,7 @@ import (
 
 	"github.com/hizkifw/hoshinova/config"
 	"github.com/hizkifw/hoshinova/logger"
+	"github.com/hizkifw/hoshinova/util/atomic"
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
@@ -20,7 +21,9 @@ const (
 	StepWaitingForLive Step = "waiting for live"
 	StepRecording      Step = "recording"
 	StepMuxing         Step = "muxing"
+	StepMuxed          Step = "muxed"
 	StepUploading      Step = "uploading"
+	StepUploaded       Step = "uploaded"
 	StepDone           Step = "done"
 	StepErrored        Step = "errored"
 	StepCancelled      Step = "cancelled"
@@ -41,6 +44,10 @@ type Task struct {
 	CreatedAt        time.Time
 	LastStepUpdate   time.Time
 	WorkingDirectory string
+
+	// consumed turns true after the task has been returned in a Subscribe call.
+	// It is flipped back to false when the task's step is changed.
+	consumed atomic.ABool
 }
 
 type Video struct {
@@ -106,6 +113,32 @@ func (t *TaskManager) Get(videoId VideoId) (*Task, bool) {
 	return t.tasks.Get(videoId)
 }
 
+func (t *TaskManager) GetOneByStep(step Step) *Task {
+	for task := range t.tasks.Iter() {
+		if task.Step == step && !task.consumed.Get() {
+			task.consumed.Set(true)
+			return task
+		}
+	}
+
+	return nil
+}
+
+func (t *TaskManager) Subscribe(step Step) <-chan *Task {
+	ch := make(chan *Task)
+
+	go func() {
+		for {
+			task := t.GetOneByStep(step)
+			if task != nil {
+				ch <- task
+			}
+		}
+	}()
+
+	return ch
+}
+
 func (t *TaskManager) GetAll() []Task {
 	tasks := make([]Task, 0, t.tasks.Len())
 	for task := range t.tasks.Iter() {
@@ -163,6 +196,7 @@ func (t *TaskManager) UpdateStep(videoId VideoId, step Step) error {
 		Message: logMessage,
 	})
 	task.LastStepUpdate = time.Now()
+	task.consumed.Set(false)
 	t.tasks.Set(videoId, task)
 	t.logger.Debugf("(%s) %s\n", videoId, logMessage)
 

@@ -57,35 +57,50 @@ func main() {
 	}
 
 	// Start watching the channels for new videos
-	wg := watcher.Watch(ctx, func(task *taskman.Task) {
-		rec, err := recorder.RecordVideo(ctx, task)
-		if err != nil {
-			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
-			return
-		}
-		lg.Debug("Recording finished", rec)
+	wg := watcher.Watch(ctx)
 
-		for i, upl := range uploaders {
-			lg.Info("Uploading", task.Video.Id, "to", cfg.Uploaders[i].Name)
-			res, err := upl.Upload(ctx, rec)
-			if err != nil {
-				lg.Error("Error uploading", task.Video.Id, err)
-				tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+	// Subscribe to events
+	go func() {
+		ch := tm.Subscribe(taskman.StepIdle)
+
+		for {
+			select {
+			case <-ctx.Done():
 				return
-			}
-			lg.Debug("Uploaded", task.Video.Id, res)
+			case task := <-ch:
+				// Create a new goroutine for each task
+				go func(task *taskman.Task) {
+					rec, err := recorder.RecordVideo(ctx, task)
+					if err != nil {
+						tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+						return
+					}
+					lg.Debugf("(%s) Recording finished: %#v\n", task.Video.Id, rec)
 
-			for j, not := range notifiers {
-				lg.Debug("Notifying", task.Video.Id, "with", cfg.Notifiers[j].Name)
-				if err := not.NotifyUploaded(ctx, res); err != nil {
-					lg.Error("Error notifying", task.Video.Id, err)
-					tm.UpdateStep(task.Video.Id, taskman.StepErrored)
-					return
-				}
+					for i, upl := range uploaders {
+						lg.Info("Uploading", task.Video.Id, "to", cfg.Uploaders[i].Name)
+						res, err := upl.Upload(ctx, rec)
+						if err != nil {
+							lg.Error("Error uploading", task.Video.Id, err)
+							tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+							return
+						}
+						lg.Debug("Uploaded", task.Video.Id, res)
+
+						for j, not := range notifiers {
+							lg.Debug("Notifying", task.Video.Id, "with", cfg.Notifiers[j].Name)
+							if err := not.NotifyUploaded(ctx, res); err != nil {
+								lg.Error("Error notifying", task.Video.Id, err)
+								tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+								return
+							}
+						}
+						tm.UpdateStep(task.Video.Id, taskman.StepDone)
+					}
+				}(task)
 			}
-			tm.UpdateStep(task.Video.Id, taskman.StepDone)
 		}
-	})
+	}()
 
 	// Handle interrupt
 	c := make(chan os.Signal, 1)

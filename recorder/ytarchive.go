@@ -59,7 +59,7 @@ func RecordVideo(ctx context.Context, task *taskman.Task) (*Recording, error) {
 		case YTAStateInterrupted:
 			tm.UpdateStep(task.Video.Id, taskman.StepCancelled)
 		case YTAStateFinished:
-			tm.UpdateStep(task.Video.Id, taskman.StepIdle)
+			tm.UpdateStep(task.Video.Id, taskman.StepMuxed)
 		}
 	})
 
