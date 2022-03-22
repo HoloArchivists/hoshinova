@@ -1,4 +1,4 @@
-module github.com/hizkifw/hoshinova
+module github.com/HoloArchivists/hoshinova
 
 go 1.18
 

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hizkifw/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/util"
 )
 
 type YTAState string

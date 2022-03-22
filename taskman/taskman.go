@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/logger"
-	"github.com/hizkifw/hoshinova/util/atomic"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/logger"
+	"github.com/HoloArchivists/hoshinova/util/atomic"
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 

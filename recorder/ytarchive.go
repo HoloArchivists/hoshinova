@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hizkifw/hoshinova/taskman"
-	"github.com/hizkifw/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/util"
 )
 
 func RecordVideo(ctx context.Context, task *taskman.Task) (*Recording, error) {

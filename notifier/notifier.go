@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/uploader"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/uploader"
 )
 
 type Notifier interface {

@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"regexp"
 
-	"github.com/hizkifw/hoshinova/logger"
+	"github.com/HoloArchivists/hoshinova/logger"
 	"gopkg.in/yaml.v2"
 )
 

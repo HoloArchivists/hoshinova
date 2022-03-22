@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/hizkifw/hoshinova/uploader"
-	"github.com/hizkifw/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/uploader"
+	"github.com/HoloArchivists/hoshinova/util"
 )
 
 type Discord struct {

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hizkifw/hoshinova/recorder"
-	"github.com/hizkifw/hoshinova/taskman"
-	"github.com/hizkifw/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/recorder"
+	"github.com/HoloArchivists/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/util"
 )
 
 type Local struct {

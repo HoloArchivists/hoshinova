@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/scraper"
-	"github.com/hizkifw/hoshinova/taskman"
-	"github.com/hizkifw/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/scraper"
+	"github.com/HoloArchivists/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/util"
 )
 
 // Watch will create a goroutine for each channel in the configuration, where

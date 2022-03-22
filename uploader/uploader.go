@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/recorder"
-	"github.com/hizkifw/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/recorder"
+	"github.com/HoloArchivists/hoshinova/taskman"
 )
 
 type Uploader interface {

@@ -7,14 +7,14 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/hizkifw/hoshinova/config"
-	"github.com/hizkifw/hoshinova/logger"
-	"github.com/hizkifw/hoshinova/notifier"
-	"github.com/hizkifw/hoshinova/recorder"
-	"github.com/hizkifw/hoshinova/taskman"
-	"github.com/hizkifw/hoshinova/uploader"
-	"github.com/hizkifw/hoshinova/util"
-	"github.com/hizkifw/hoshinova/watcher"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/logger"
+	"github.com/HoloArchivists/hoshinova/notifier"
+	"github.com/HoloArchivists/hoshinova/recorder"
+	"github.com/HoloArchivists/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/uploader"
+	"github.com/HoloArchivists/hoshinova/util"
+	"github.com/HoloArchivists/hoshinova/watcher"
 )
 
 func main() {

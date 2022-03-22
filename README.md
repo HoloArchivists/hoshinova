@@ -14,7 +14,7 @@ Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) installed
 and executable in your PATH.
 
 ```
-go install github.com/hizkifw/hoshinova@main
+go install github.com/HoloArchivists/hoshinova@main
 ```
 
 You should now have an executable `~/go/bin/hoshinova`.
