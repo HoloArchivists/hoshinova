@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/HoloArchivists/hoshinova/config"
-	"github.com/HoloArchivists/hoshinova/recorder"
+	"github.com/HoloArchivists/hoshinova/module/recorder"
 	"github.com/HoloArchivists/hoshinova/taskman"
 )
 
@@ -18,7 +18,7 @@ type UploadResult struct {
 	PublicURL string
 }
 
-func NewUploader(u config.Uploader) (Uploader, error) {
+func New(u *config.Uploader) (Uploader, error) {
 	switch u.Type {
 	case "local":
 		path, ok := u.Config["path"]

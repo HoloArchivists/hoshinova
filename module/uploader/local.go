@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HoloArchivists/hoshinova/recorder"
+	"github.com/HoloArchivists/hoshinova/module/recorder"
 	"github.com/HoloArchivists/hoshinova/taskman"
 	"github.com/HoloArchivists/hoshinova/util"
 )

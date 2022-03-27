@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/HoloArchivists/hoshinova/uploader"
+	"github.com/HoloArchivists/hoshinova/module/uploader"
 	"github.com/HoloArchivists/hoshinova/util"
 )
 

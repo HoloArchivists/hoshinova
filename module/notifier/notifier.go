@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/HoloArchivists/hoshinova/config"
-	"github.com/HoloArchivists/hoshinova/uploader"
+	"github.com/HoloArchivists/hoshinova/module/uploader"
 )
 
 type Notifier interface {

@@ -1,56 +1,166 @@
-# hoshinova example config file
-# copy this file to config.yaml and update it as needed
+# hoshinova configuration
+#
+# Copy this file to config.yaml and update it as needed.
+# hoshinova is a modular, highly configurable YouTube (soon to be general
+# purpose) scraper and automatic archiver. The application is divided into
+# modules, each of which take in tasks, performs its duties, and passes the
+# task on to the next module.
+#
+# The flow of tasks generally goes like this:
+#
+#   Scraper -> Recorder -> Uploader -> Notifier
+#
+# The task assignment system is based on tags. Each module will only respond to
+# tasks that have certain tags, and when the module is done, it can also attach
+# some more tags onto the task before passing it on to the next module.
+#
+# Because of this tagging system, each task can be processed by multiple
+# modules. For example, if you have two notification modules configured to
+# respond to the `default` tag, both modules will activate when a task with that
+# tag appears.
 
-# The number of seconds to wait between checking if a channel has any new
-# videos.
-poll_interval: 60
-
-# Where to store all temporary files
-workdir: /tmp
-
-# Logging configuration
-logging:
+# Global configuration to be applied to the whole application
+app:
   # Log level: one of debug, info, warn, error, fatal
-  level: info
+  log_level: info
 
-# Configuration for ytarchive
-ytarchive:
-  path: ytarchive
-  quality: best
-  flags:
-  - '--vp9'
-  - '--thumbnail'
-  - '--add-metadata'
-  - '--threads'
-  - '4'
-  - '--output'
-  - '%(id)s'
+# This part configures the Scraper modules. Right now, only the RSS scraper is
+# available. Each module will have a set of basic configuration:
+scrapers:
+  # Any human-readable name for your convenience. Can be set to anything.
+- name: RSS
+  # The type of scraper to use. Right now, there's only `rss`, but more may be
+  # added in the future.
+  type: rss
+  # A list of tags
+  tags:
+    # This list defines which tags this module should 'listen' to. Because
+    # scrapers are at the start of the module chain, they don't have any tasks
+    # in they have to wait for, so this field is not used.
+    sub: []
+    # This list contains the list of tags that the module will attach to the
+    # task.
+    pub: [default]
+  # This is module-specific configuration. For the `rss` scraper, the
+  # configuration looks like the example below. But for other types of scrapers,
+  # it may look different.
+  config:
+    # This part specifies how long to wait between checking the RSS endpoint for
+    # new videos.
+    poll_interval_seconds: 60
+    # The list of channels this module should monitor.
+    channels:
+    - name: Moona
+      id: UCP0BspO_AMEe3aQqqpo89Dg
+      tags:
+        # Here, you can specify additional tags that the video should get. The
+        # list here will be added onto the `pub` list of the module above.
+        pub: []
+      # This part lets you match videos by matching their title with a list of
+      # regexes below. For more information on Go's regular expressions format,
+      # run `go doc regexp/syntax`.
+      filters:
+      - regex: '(?i)MoonUtau|Karaoke|Archive'
+        tags:
+          # You can also add even more tags here, and it will be added to the
+          # list of tags too. This can be useful if you want to run certain
+          # tasks for certain types of videos. For example, sending a
+          # notification to a specific Discord channel if the video contains a
+          # karaoke in the title.
+          pub: [karaoke]
+    - name: Okayu
+      id: UCvaTdHTWBGv3MKj3KVqJVCw
+      tags:
+        pub: [okayu]
+      filters:
+      - regex: '(?i)ASMR'
+        tags:
+          pub: [asmr]
 
-# The list of YouTube channels to monitor
-channels:
-- name: Moona
-  id: UCP0BspO_AMEe3aQqqpo89Dg
-  filters:
-  - '(?i)MoonUtau'
-  - '(?i)Karaoke'
-  - '(?i)Unarchived'
-- name: Okayu
-  id: UCvaTdHTWBGv3MKj3KVqJVCw
-  filters:
-  - '(?i)ASMR'
+# This module takes in tasks from the scraper modules.
+recorders:
+- name: YTArchive
+  type: ytarchive
+  tags:
+    # Here, you define what tasks this recorder will take. Because the previous
+    # RSS scraper module publishes a `default` tag and this module also takes in
+    # the `default` tag, it will take in everything that the RSS scraper emits.
+    sub: [default]
+    # Just like the previous module, you can define additional tags that this
+    # module will attach to the task. The list here will add to the existing
+    # list, not replace it. It can be left blank if you don't want to add any
+    # more tags.
+    pub: []
 
-# List of destinations where the video files will go to after it is finished
-# downloading.
+  # Each module 'step' can also have additional configuration. These additional
+  # settings are placed outside of the `config` block.
+  #
+  # The place where temporary videos are saved to.
+  working_directory: /tmp
+
+  # ytarchive-specific configuration
+  config:
+    # If you don't have `ytarchive` in your $PATH, you can specify a custom path
+    # for the executable here.
+    executable_path: ytarchive
+    quality: best
+    flags:
+    - '--vp9'
+    - '--thumbnail'
+    - '--add-metadata'
+    - '--threads'
+    - '4'
+    - '--output'
+    - '%(upload_date)s %(title)s [%(channel)s] (%(id)s)'
+
+# This module will take in the files produced by the recorder module and upload
+# them. Right now, there is only a `local` uploader which simply moves the files
+# over to a different folder.
 uploaders:
 - name: My Videos folder
   type: local
+  tags:
+    sub: [default]
+    pub: []
   config:
+    # Where the videos should end up
     path: /home/kitsune/Videos
+    # If you're moving the files to e.g. a webserver root, you can specify the
+    # URL for that folder. The video filename will be appended to the end of the
+    # URL and passed along to the Notifier module.
+    #
+    # If you don't have a URL for the folder, set this as a blank string:
+    #
+    #   base_url: ''
+    #
     base_url: http://localhost:3000
 
-# List of places to notify when a video is uploaded.
+# The notifier module is a bit special, as it can listen to tasks emitted from
+# any of the steps before.
 notifiers:
 - name: My private server
   type: discord
+  tags:
+    sub: [default]
+    pub: []
+
+  # You can configure which events this notifier will listen to. The list of
+  # available events are:
+  #
+  #  `added`             A task is discovered and is waiting to be recorded.
+  #  `waiting for live`  The live stream has not started yet and the recorder is
+  #                      waiting.
+  #  `recording`         The recorder is currently recording the live stream.
+  #  `muxing`            Recording is finished and the recorder is processing
+  #                      the file.
+  #  `muxed`             The file is ready to be uploaded.
+  #  `uploading`         The file is being uploaded.
+  #  `uploaded`          The file has been uploaded.
+  #  `done`              The task is finished.
+  #  `errored`           Something went wrong while performing any of the steps.
+  #
+  events: [recording, uploaded]
+
+  # discord-specific configuration
   config:
     webhook_url: 'https://discord.com/api/webhooks/...'

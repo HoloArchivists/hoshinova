@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/HoloArchivists/hoshinova/config"
-	"github.com/HoloArchivists/hoshinova/scraper"
+	"github.com/HoloArchivists/hoshinova/module/scraper"
 	"github.com/HoloArchivists/hoshinova/taskman"
 	"github.com/HoloArchivists/hoshinova/util"
 )
