@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/HoloArchivists/hoshinova/config"
@@ -42,43 +43,49 @@ func NewRSS(c *config.Scraper[RSSConfig]) *RSS {
 }
 
 func (r *RSS) Watch(ctx context.Context, channels []config.Channel, ps task.PubSub) error {
-	for _, channel := range channels {
-		go r.watchChannel(ctx, channel)
-	}
-
-	return nil
-}
-
-func (r *RSS) watchChannel(ctx context.Context, channel config.Channel) error {
 	pollInterval := time.Duration(r.c.Config.PollIntervalSeconds) * time.Second
-	// Failure count for exponential backoff.
-	failures := 0
 	lg := util.GetLogger(ctx)
 
 	return util.LoopUntilCancelled(ctx, func() error {
-		videos, err := r.scrape(ctx, channel.Id)
-		if err != nil {
-			lg.Errorf("Failed to scrape RSS feed: %v", err)
-			failures++
-			util.SleepContext(ctx, time.Duration(2^failures)*time.Second)
-			return err
-		}
-		failures = 0
-
-		// Check if the video matches any of the configured filters.
-		for _, video := range videos {
-			if _, err := r.kv.Get(ctx, video.ID); err == nil {
-				// Video has already been submitted to the queue.
+		for _, channel := range channels {
+			videos, err := r.scrape(ctx, channel.Id)
+			if err != nil {
+				lg.Errorf("Error scraping %s: %w", channel.Name, err)
 				continue
 			}
 
-			// Check if the video matches any of the configured filters.
+		video:
+			for _, video := range videos {
+				if _, err := r.kv.Get(ctx, video.ID); err == nil {
+					// Video has already been submitted to the queue.
+					continue
+				}
 
-			// TODO
+				// Check if the video matches any of the configured filters.
+				for _, filter := range channel.Filters {
+					re := regexp.Regexp(filter.Regex)
+					if re.MatchString(video.Title) {
+						// Add to the KV
+						r.kv.Set(ctx, video.ID, true, time.Hour*24*7*365)
 
-			// Add to the KV
-			r.kv.Set(ctx, video.ID, true, time.Hour*24*7*365)
+						// Create a new task.
+						task := task.New(video.Title, video.ID, channel.Name, channel.Id)
+						task.Tags = append(task.Tags, filter.Tags.Pub...)
+						task.Tags = append(task.Tags, channel.Tags.Pub...)
+						task.Tags = append(task.Tags, r.c.Tags.Pub...)
+
+						// Publish the task.
+						if err := ps.Publish("scraper", task); err != nil {
+							lg.Errorf("Failed to publish task: %v", err)
+						}
+
+						continue video
+					}
+				}
+			}
 		}
+
+		return util.SleepContext(ctx, pollInterval)
 	})
 }
 

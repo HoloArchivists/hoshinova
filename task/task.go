@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"time"
 
 	"github.com/HoloArchivists/hoshinova/pubsub"
 	"github.com/google/uuid"
@@ -26,7 +27,6 @@ var (
 )
 
 type Step string
-type VideoID string
 type PubSub = pubsub.PubSub[Task]
 
 type Task struct {
@@ -38,7 +38,7 @@ type Task struct {
 	Title string `json:"title"`
 	// VideoID is the ID of the video being archived.
 	// Example: "dQw4w9WgXcQ"
-	VideoID VideoID `json:"video_id"`
+	VideoID string `json:"video_id"`
 	// ChannelName is the name of the channel the video is from.
 	// Example: "Rick Astley"
 	ChannelName string `json:"channel_name"`
@@ -56,5 +56,18 @@ type Task struct {
 
 	// CreatedAt is the time the task was first created. Usually this is the time
 	// the task was added to the queue by the Scraper module.
-	CreatedAt int64 `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func New(title, videoID, channelName, channelID string) Task {
+	return Task{
+		ID:          uuid.New(),
+		Title:       title,
+		VideoID:     videoID,
+		ChannelName: channelName,
+		ChannelID:   channelID,
+		Step:        StepAdded,
+		Tags:        []string{},
+		CreatedAt:   time.Now(),
+	}
 }

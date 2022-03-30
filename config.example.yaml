@@ -1,6 +1,6 @@
 # hoshinova configuration
-#
 # Copy this file to config.yaml and update it as needed.
+#
 # hoshinova is a modular, highly configurable YouTube (soon to be general
 # purpose) scraper and automatic archiver. The application is divided into
 # modules, each of which take in tasks, performs its duties, and passes the
@@ -46,7 +46,10 @@ scrapers:
   # it may look different.
   config:
     # This part specifies how long to wait between checking the RSS endpoint for
-    # new videos.
+    # new videos. Channels are checked sequentially, and the interval starts
+    # when the last channel has been checked. So if it takes 5 seconds to poll
+    # all the channels, and your interval is set to 10 seconds, then each
+    # channel will get polled once every 15 seconds.
     poll_interval_seconds: 60
     # The list of channels this module should monitor.
     channels:
@@ -58,7 +61,7 @@ scrapers:
         pub: []
       # This part lets you match videos by matching their title with a list of
       # regexes below. For more information on Go's regular expressions format,
-      # run `go doc regexp/syntax`.
+      # run `go doc regexp/syntax`, or use https://regoio.herokuapp.com/.
       filters:
       - regex: '(?i)MoonUtau|Karaoke|Archive'
         tags:
