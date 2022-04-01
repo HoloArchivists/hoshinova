@@ -111,3 +111,18 @@ If you used `go install`,
 ```
 ~/go/bin/hoshinova
 ```
+
+### Running in Docker (optional)
+
+Make shure you have [installed Docker Engine](https://docs.docker.com/engine/install/)
+
+Run image in Docker with this command.
+```bash
+docker run -v /path/to/local/config-folder/:/config/ --name hoshinova-container holoarchivist/hoshinova
+```
+> Don't forger to change `/path/to/local/config-folder/` to your local folder with config.yaml
+
+You can check logs with `docker logs` command
+```bash
+docker logs -f hoshinova-container
+```
