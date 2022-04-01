@@ -9,7 +9,8 @@ RUN make
 # Cloning and Building ytarchive
 RUN git clone https://github.com/Kethsar/ytarchive.git /app/ytarchive
 WORKDIR /app/ytarchive
-RUN go build
+ENV CGO_ENABLED=0
+RUN go build -ldflags "-X main.Commit=-$(git rev-parse --short HEAD)"
 
 FROM alpine:latest
 RUN mkdir /app
@@ -20,5 +21,4 @@ COPY --from=builder /app/ytarchive/ytarchive /app/
 ENV PATH /app/:$PATH
 # Going to config folder
 WORKDIR /config/
-CMD ls && hoshinova
-
+CMD hoshinova
