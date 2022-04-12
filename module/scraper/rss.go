@@ -3,6 +3,7 @@ package scraper
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"regexp"
 	"time"
@@ -14,12 +15,11 @@ import (
 )
 
 type RSS struct {
-	c *config.Scraper[RSSConfig]
+	cfgScraper config.Scraper
+	cfgRSS     RSSConfig
 	// kv to track which videos have been submitted to the queue.
 	kv kv.KV[string, bool]
 }
-
-var _ Scraper = &RSS{}
 
 // rssFeed represents the YouTube RSS rssFeed.
 type rssFeed struct {
@@ -35,19 +35,58 @@ type rssEntry struct {
 
 // RSSConfig is the configuration for the RSS scraper.
 type RSSConfig struct {
-	PollIntervalSeconds int `json:"poll_interval_seconds"`
+	PollIntervalSeconds int       `yaml:"poll_interval_seconds"`
+	Channels            []Channel `yaml:"channels"`
 }
 
-func NewRSS(c *config.Scraper[RSSConfig]) *RSS {
-	return &RSS{c: c}
+type Channel struct {
+	Name    string      `yaml:"name"`
+	Id      string      `yaml:"id"`
+	Tags    config.Tags `yaml:"tags"`
+	Filters []Filter    `yaml:"filters"`
 }
 
-func (r *RSS) Watch(ctx context.Context, channels []config.Channel, ps task.PubSub) error {
-	pollInterval := time.Duration(r.c.Config.PollIntervalSeconds) * time.Second
+type Filter struct {
+	Regex Regexp      `yaml:"regex"`
+	Tags  config.Tags `yaml:"tags"`
+}
+
+type Regexp regexp.Regexp
+
+type Video struct {
+	ID    string
+	Title string
+}
+
+func (r *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return err
+	}
+	*r = Regexp(*re)
+	return nil
+}
+
+func NewRSS(cfgScraper *config.Scraper) (Scraper, error) {
+	var cfgRSS RSSConfig
+	if err := cfgScraper.Config.Unmarshal(&cfgRSS); err != nil {
+		return nil, fmt.Errorf("failed to parse RSS config: %w", err)
+	}
+
+	kv := kv.NewMemoryKV[string, bool]()
+	return &RSS{*cfgScraper, cfgRSS, kv}, nil
+}
+
+func (r *RSS) Start(ctx context.Context, ps task.PubSub) error {
+	pollInterval := time.Duration(r.cfgRSS.PollIntervalSeconds) * time.Second
 	lg := util.GetLogger(ctx)
 
 	return util.LoopUntilCancelled(ctx, func() error {
-		for _, channel := range channels {
+		for _, channel := range r.cfgRSS.Channels {
 			videos, err := r.scrape(ctx, channel.Id)
 			if err != nil {
 				lg.Errorf("Error scraping %s: %w", channel.Name, err)
@@ -72,7 +111,7 @@ func (r *RSS) Watch(ctx context.Context, channels []config.Channel, ps task.PubS
 						task := task.New(video.Title, video.ID, channel.Name, channel.Id)
 						task.Tags = append(task.Tags, filter.Tags.Pub...)
 						task.Tags = append(task.Tags, channel.Tags.Pub...)
-						task.Tags = append(task.Tags, r.c.Tags.Pub...)
+						task.Tags = append(task.Tags, r.cfgScraper.Tags.Pub...)
 
 						// Publish the task.
 						if err := ps.Publish("scraper", task); err != nil {

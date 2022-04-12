@@ -57,6 +57,9 @@ type Task struct {
 	// CreatedAt is the time the task was first created. Usually this is the time
 	// the task was added to the queue by the Scraper module.
 	CreatedAt time.Time `json:"created_at"`
+
+	// WorkDir is the path to the working directory of the task.
+	WorkDir string `json:"work_dir"`
 }
 
 func New(title, videoID, channelName, channelID string) Task {

@@ -7,29 +7,59 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/HoloArchivists/hoshinova/taskman"
+	"github.com/HoloArchivists/hoshinova/config"
+	"github.com/HoloArchivists/hoshinova/task"
 	"github.com/HoloArchivists/hoshinova/util"
 )
 
-func RecordVideo(ctx context.Context, task *taskman.Task) (*Recording, error) {
-	tm := util.GetTaskManager(ctx)
+type YTArchive struct {
+	cfgRecorder  *config.Recorder
+	cfgYTArchive YTArchiveConfig
+}
+
+type YTArchiveConfig struct {
+	// ExecutablePath is the path to the ytarchive executable.
+	ExecutablePath string `yaml:"executable_path"`
+	// Quality is the video quality to use.
+	Quality string `yaml:"quality"`
+	// Flags are additional flags to pass to ytarchive.
+	Flags []string `yaml:"flags"`
+}
+
+func NewYTArchive(cfgRecorder *config.Recorder) (Recorder, error) {
+	var configYTArchive YTArchiveConfig
+	if err := cfgRecorder.Config.Unmarshal(&configYTArchive); err != nil {
+		return nil, fmt.Errorf("failed to parse ytarchive config: %w", err)
+	}
+
+	return &YTArchive{
+		cfgRecorder:  cfgRecorder,
+		cfgYTArchive: configYTArchive,
+	}, nil
+}
+
+func (y *YTArchive) Start(ctx context.Context, ps task.PubSub) error {
+	return util.LoopUntilCancelled(ctx, func() error {
+		return nil
+	})
+}
+
+func (y *YTArchive) recordVideo(ctx context.Context, task *task.Task) error {
 	lg := util.GetLogger(ctx)
-	cfg := util.GetConfig(ctx)
-	tm.LogEvent(task.Video.Id, "starting ytarchive")
 
 	// Set up the command.
 	args := []string{"--wait", "--merge"}
-	args = append(args, cfg.YTArchive.Flags...)
+	args = append(args, y.cfgYTArchive.Flags...)
 	args = append(
 		args,
-		"https://www.youtube.com/watch?v="+string(task.Video.Id),
-		cfg.YTArchive.Quality,
+		"https://www.youtube.com/watch?v="+string(task.VideoID),
+		y.cfgYTArchive.Quality,
 	)
 
-	cmd := exec.CommandContext(ctx, cfg.YTArchive.Path, args...)
-	cmd.Dir = task.WorkingDirectory
+	cmd := exec.CommandContext(ctx, y.cfgYTArchive.ExecutablePath, args...)
+	cmd.Dir = task.WorkDir
 
-	lg.Debugf("(%s) starting ytarchive with command %#v\n", task.Video.Id, cmd.Args)
+	lg.Debugf("(%s) starting ytarchive with command %#v\n", task.VideoID, cmd.Args)
 
 	// Start the process in a separate process group. This prevents signals from
 	// being sent to the child processes.
@@ -45,21 +75,19 @@ func RecordVideo(ctx context.Context, task *taskman.Task) (*Recording, error) {
 
 		switch yta.State {
 		case YTAStateWaiting:
-			tm.UpdateStep(task.Video.Id, taskman.StepWaitingForLive)
+			lg.Debugf("(%s) waiting for live\n", task.VideoID)
 		case YTAStateRecording:
 			if !db.Check() {
 				return
 			}
-			tm.UpdateStep(task.Video.Id, taskman.StepRecording)
-			tm.UpdateProgress(task.Video.Id, yta.TotalSize)
 		case YTAStateMuxing:
-			tm.UpdateStep(task.Video.Id, taskman.StepMuxing)
+			lg.Debugf("(%s) muxing\n", task.VideoID)
 		case YTAStateError:
-			tm.UpdateStep(task.Video.Id, taskman.StepErrored)
+			lg.Errorf("(%s) errored\n", task.VideoID)
 		case YTAStateInterrupted:
-			tm.UpdateStep(task.Video.Id, taskman.StepCancelled)
+			lg.Debugf("(%s) interrupted\n", task.VideoID)
 		case YTAStateFinished:
-			tm.UpdateStep(task.Video.Id, taskman.StepMuxed)
+			lg.Debugf("(%s) finished recording\n", task.VideoID)
 		}
 	})
 
@@ -69,21 +97,19 @@ func RecordVideo(ctx context.Context, task *taskman.Task) (*Recording, error) {
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		lg.Errorf("(%s) ytarchive failed to start: %w\n", task.Video.Id, err)
-		return nil, err
+		lg.Errorf("(%s) ytarchive failed to start: %w\n", task.VideoID, err)
+		return err
 	}
 
-	lg.Debugf("(%s) ytarchive started\n", task.Video.Id)
+	lg.Debugf("(%s) ytarchive started\n", task.VideoID)
 
 	// Wait for the command to exit
 	if err := cmd.Wait(); err != nil {
-		lg.Errorf("(%s) ytarchive failed: %w\n", task.Video.Id, err)
-		return nil, fmt.Errorf("ytarchive failed: %w", err)
+		lg.Errorf("(%s) ytarchive failed: %w\n", task.VideoID, err)
+		return fmt.Errorf("ytarchive failed: %w", err)
 	}
 
-	lg.Infof("(%s) ytarchive finished\n", task.Video.Id)
-	return &Recording{
-		VideoID:  task.Video.Id,
-		FilePath: yta.OutputFile,
-	}, nil
+	lg.Infof("(%s) ytarchive finished\n", task.VideoID)
+
+	return nil
 }

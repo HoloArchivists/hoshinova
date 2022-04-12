@@ -2,18 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/HoloArchivists/hoshinova/config"
 	"github.com/HoloArchivists/hoshinova/logger"
-	"github.com/HoloArchivists/hoshinova/module/notifier"
 	"github.com/HoloArchivists/hoshinova/module/scraper"
-	"github.com/HoloArchivists/hoshinova/module/uploader"
+	"github.com/HoloArchivists/hoshinova/pubsub"
+	"github.com/HoloArchivists/hoshinova/task"
 	"github.com/HoloArchivists/hoshinova/util"
-	"github.com/HoloArchivists/hoshinova/watcher"
 )
 
 func main() {
@@ -32,9 +29,8 @@ func main() {
 	ctx = util.WithLogger(ctx, lg)
 	ctx = util.WithConfig(ctx, cfg)
 
+	ps := pubsub.New[task.Task](99)
 	var scrapers []scraper.Scraper
-	var uploaders []uploader.Uploader
-	var notifiers []notifier.Notifier
 
 	// Create scrapers
 	for _, s := range cfg.Scrapers {
@@ -45,53 +41,18 @@ func main() {
 		scrapers = append(scrapers, scr)
 	}
 
-	// Create uploaders
-	for _, u := range cfg.Uploaders {
-		upl, err := uploader.NewUploader(u)
-		if err != nil {
-			panic(err)
-		}
-		uploaders = append(uploaders, upl)
+	// Start scrapers
+	for _, scr := range scrapers {
+		go func(scr scraper.Scraper) {
+			scr.Start(ctx, ps)
+		}(scr)
 	}
-
-	// Create notifiers
-	for _, n := range cfg.Notifiers {
-		not, err := notifier.NewNotifier(n)
-		if err != nil {
-			panic(err)
-		}
-		notifiers = append(notifiers, not)
-	}
-
-	// Start watching the channels for new videos
-	wg := watcher.Watch(ctx)
 
 	// Handle interrupt
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
-	// Print table when the program is interrupted
-	lg.Info("Application started. Press Ctrl+C once to print the status, twice to exit.")
-	func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-c:
-				fmt.Println("")
-				tm.PrintTable()
-				lg.Info("Press Ctrl+C again to exit")
-
-				select {
-				case <-c:
-					return
-				case <-time.After(time.Second):
-				}
-			}
-		}
-	}()
-	lg.Debug("Cancelling the context")
+	<-c
 	cancel()
 
 	lg.Info("Waiting for all goroutines to finish...")
@@ -101,5 +62,4 @@ func main() {
 		lg.Info("Force exiting")
 		os.Exit(1)
 	}()
-	wg.Wait()
 }

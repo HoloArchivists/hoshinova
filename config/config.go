@@ -10,13 +10,38 @@ import (
 
 type Regexp regexp.Regexp
 
+func (r *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return err
+	}
+	*r = Regexp(*re)
+	return nil
+}
+
+type RawMessage struct {
+	unmarshal func(interface{}) error
+}
+
+func (msg *RawMessage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	msg.unmarshal = unmarshal
+	return nil
+}
+func (msg *RawMessage) Unmarshal(v any) error {
+	return msg.unmarshal(v)
+}
+
 type Config struct {
-	App       AppConfig       `yaml:"app"`
-	Channels  []Channel       `yaml:"channels"`
-	Scrapers  []Scraper[any]  `yaml:"scrapers"`
-	Recorders []Recorder[any] `yaml:"recorders"`
-	Uploaders []Uploader[any] `yaml:"uploaders"`
-	Notifiers []Notifier[any] `yaml:"notifiers"`
+	App       AppConfig  `yaml:"app"`
+	Channels  []Channel  `yaml:"channels"`
+	Scrapers  []Scraper  `yaml:"scrapers"`
+	Recorders []Recorder `yaml:"recorders"`
+	Uploaders []Uploader `yaml:"uploaders"`
+	Notifiers []Notifier `yaml:"notifiers"`
 }
 
 type AppConfig struct {
@@ -40,7 +65,7 @@ type Tags struct {
 	Sub []string `yaml:"sub"`
 }
 
-type ModuleConfig[C any] struct {
+type ModuleConfig struct {
 	// Name is an arbitrary human-readable identifier for the module.
 	Name string `yaml:"name"`
 	// Type defines what module to instantiate.
@@ -48,24 +73,24 @@ type ModuleConfig[C any] struct {
 	// Tags list the task tags that this module should respond to.
 	Tags Tags `yaml:"tags"`
 	// Config is the module-specific configuration.
-	Config C `yaml:"config"`
+	Config RawMessage `yaml:"config"`
 }
 
-type Scraper[C any] struct {
-	ModuleConfig[C] `yaml:",inline"`
+type Scraper struct {
+	ModuleConfig `yaml:",inline"`
 }
 
-type Recorder[C any] struct {
-	ModuleConfig[C] `yaml:",inline"`
+type Recorder struct {
+	ModuleConfig `yaml:",inline"`
 }
 
-type Uploader[C any] struct {
-	ModuleConfig[C] `yaml:",inline"`
+type Uploader struct {
+	ModuleConfig `yaml:",inline"`
 }
 
-type Notifier[C any] struct {
-	ModuleConfig[C] `yaml:",inline"`
-	Events          []string `yaml:"events"`
+type Notifier struct {
+	ModuleConfig `yaml:",inline"`
+	Events       []string `yaml:"events"`
 }
 
 type YTArchive struct {
@@ -86,17 +111,4 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	return &config, nil
-}
-
-func (r *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	re, err := regexp.Compile(s)
-	if err != nil {
-		return err
-	}
-	*r = Regexp(*re)
-	return nil
 }

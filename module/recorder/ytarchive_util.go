@@ -52,6 +52,7 @@ type YTA struct {
 	OutputFile string `json:"output_file"`
 }
 
+// NewYTA creates a new YTA struct.
 func NewYTA() *YTA {
 	return &YTA{
 		State: "idle",
