@@ -1,0 +1,23 @@
+[package]
+name = "hoshinova"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0"
+bus = "2.3"
+chrono = { version = "0.4.0", features = ["serde"] }
+clap = { version = "3.2.8", features = ["derive"] }
+crossbeam = "0.8"
+env_logger = "0.8.4"
+humantime = "2.1.0"
+humantime-serde = "1.1.1"
+log = "0.4"
+regex = "1"
+reqwest = { version = "0.11", features = ["blocking"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_regex = "1.1.0"
+toml = "0.5"
+quick-xml = { version = "0.23", features = [ "serialize" ] }
