@@ -1,14 +1,15 @@
 #[macro_use]
 extern crate log;
+use crate::module::Module;
+use crate::msgbus::MessageBus;
 use anyhow::{anyhow, Result};
-use bus::Bus;
 use clap::Parser;
-use module::Module;
+use signal_hook::iterator::Signals;
 use std::process::Command;
-use std::sync::mpsc;
 
 mod config;
 mod module;
+mod msgbus;
 
 /// Garbage ytarchive manager
 #[derive(Parser, Debug)]
@@ -75,8 +76,7 @@ fn run() -> Result<()> {
     );
 
     // Set up message bus
-    let mut bus = Bus::new(32);
-    let (tx, mix_rx) = mpsc::sync_channel(32);
+    let mut bus = MessageBus::new(32);
 
     // Set up modules
     let mut modules = Vec::new();
@@ -85,26 +85,33 @@ fn run() -> Result<()> {
         modules.push(scraper);
     }
 
-    // Set up scoped threads
+    // Start threads
     crossbeam::scope(|s| {
         // Start modules
         for module in modules {
-            let tx = tx.clone();
-            let mut rx = bus.add_rx();
-
+            let mut trx = bus.add_trx();
             s.spawn(move |_| {
-                if let Err(e) = module.run(tx, &mut rx) {
+                if let Err(e) = module.run(&mut trx) {
                     error!("{}", e);
                 }
             });
         }
 
-        // Start message dispatcher
+        // Listen for signals
+        let closer = bus.add_trx();
         s.spawn(move |_| {
-            for m in mix_rx.iter() {
-                bus.broadcast(m);
+            let mut signals =
+                Signals::new(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])
+                    .expect("Failed to create signal iterator");
+            for _ in signals.forever() {
+                info!("Received signal, shutting down");
+                closer.close().expect("Failed to close message bus");
+                return;
             }
         });
+
+        // Start message dispatcher
+        s.spawn(|_| bus.start());
     })
     .map_err(|e| anyhow!("Could not exit cleanly: {:?}", e))
 }

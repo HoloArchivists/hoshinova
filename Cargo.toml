@@ -19,5 +19,6 @@ regex = "1"
 reqwest = { version = "0.11", features = ["blocking"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_regex = "1.1.0"
+signal-hook = "0.3.14"
 toml = "0.5"
 quick-xml = { version = "0.23", features = [ "serialize" ] }
