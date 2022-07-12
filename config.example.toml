@@ -7,7 +7,7 @@ working_directory = "temp"
 outtmpl = "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
 
 [scraper.rss]
-poll_interval = "60s"
+poll_interval = "30s"
 
 [[channel]]
 id = "UCP0BspO_AMEe3aQqqpo89Dg"

@@ -1,13 +1,12 @@
+use crate::msgbus::BusTrx;
 use anyhow::Result;
-use bus::BusReader;
-use std::sync::mpsc;
+use std::fmt::Debug;
 
 pub mod scraper;
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Task(Task),
-    Quit,
 }
 
 #[derive(Debug, Clone)]
@@ -18,6 +17,6 @@ pub struct Task {
     pub channel_id: String,
 }
 
-pub trait Module<T = Message> {
-    fn run(&self, send: mpsc::SyncSender<T>, recv: &mut BusReader<T>) -> Result<()>;
+pub trait Module<T: Debug + Clone + Sync = Message> {
+    fn run(&self, bus: &mut BusTrx<T>) -> Result<()>;
 }

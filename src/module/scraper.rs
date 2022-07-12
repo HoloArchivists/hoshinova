@@ -1,5 +1,6 @@
 use super::{Message, Module, Task};
 use crate::config;
+use crate::msgbus::BusTrx;
 use anyhow::Result;
 use bus::BusReader;
 use reqwest::blocking::Client;
@@ -55,6 +56,8 @@ impl<'a> Scraper<'a> {
     }
 
     fn runloop(&self) -> Result<Vec<Task>> {
+        debug!("Fetching RSS for {}", self.channel.name);
+
         // Fetch the RSS feed
         let res = self.client.get(&self.url).send()?;
         let feed: RSSFeed = quick_xml::de::from_slice(&res.bytes()?)?;
@@ -85,17 +88,12 @@ impl<'a> Scraper<'a> {
 }
 
 impl<'a> Module for Scraper<'a> {
-    fn run(&self, send: mpsc::SyncSender<Message>, recv: &mut BusReader<Message>) -> Result<()> {
+    fn run(&self, bus: &mut BusTrx<Message>) -> Result<()> {
         loop {
-            if let Ok(message) = recv.try_recv() {
-                if let Message::Quit = message {
-                    return Ok(());
-                }
-            }
             match self.runloop() {
                 Ok(tasks) => {
                     for task in tasks {
-                        send.send(Message::Task(task))?;
+                        bus.send(Message::Task(task))?;
                     }
                 }
                 Err(e) => {
@@ -104,7 +102,9 @@ impl<'a> Module for Scraper<'a> {
             }
 
             // Sleep
-            thread::sleep(self.config.scraper.rss.poll_interval);
+            if bus.wait_until_closed(self.config.scraper.rss.poll_interval) {
+                return Ok(());
+            }
         }
     }
 }
