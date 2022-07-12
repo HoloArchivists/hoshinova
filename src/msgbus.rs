@@ -8,12 +8,13 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-pub enum BusMessage<T: Debug + Clone + Sync> {
+enum BusMessage<T: Debug + Clone + Sync> {
     Message(T),
     Close,
 }
 
-/// MessageBus implements a multi-producer, multi-consumer queue.
+/// MessageBus implements a multi-producer, multi-consumer queue. Each consumer
+/// has its own queue, so all consumers will receive the same messages.
 pub struct MessageBus<T: Debug + Clone + Sync> {
     bus: Bus<BusMessage<T>>,
     tx: mpsc::SyncSender<BusMessage<T>>,
@@ -67,8 +68,13 @@ pub struct BusTrx<T: Debug + Clone + Sync> {
 
 impl<T: Debug + Clone + Sync> BusTrx<T> {
     /// Send a message to the bus.
-    pub fn send(&self, m: T) -> Result<(), mpsc::SendError<BusMessage<T>>> {
-        self.tx.send(BusMessage::Message(m))
+    pub fn send(&self, m: T) -> Result<(), mpsc::SendError<T>> {
+        self.tx.send(BusMessage::Message(m)).map_err(|e| {
+            mpsc::SendError(match e.0 {
+                BusMessage::Message(m) => m,
+                _ => unreachable!(),
+            })
+        })
     }
 
     /// Wait until the bus is closed, up to the given timeout. Returns true if
@@ -105,7 +111,9 @@ impl<T: Debug + Clone + Sync> BusTrx<T> {
     }
 
     /// Close the bus. This will cause the bus to stop broadcasting messages.
-    pub fn close(&self) -> Result<(), mpsc::SendError<BusMessage<T>>> {
-        self.tx.send(BusMessage::Close)
+    pub fn close(&self) -> Result<(), mpsc::SendError<()>> {
+        self.tx
+            .send(BusMessage::Close)
+            .map_err(|_| mpsc::SendError(()))
     }
 }
