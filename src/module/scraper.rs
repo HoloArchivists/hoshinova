@@ -2,11 +2,9 @@ use super::{Message, Module, Task};
 use crate::config;
 use crate::msgbus::BusTrx;
 use anyhow::Result;
-use bus::BusReader;
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use std::sync::mpsc;
-use std::thread;
+use std::collections::HashSet;
 
 pub struct Scraper<'a> {
     channel: &'a config::ChannelConfig,
@@ -55,7 +53,7 @@ impl<'a> Scraper<'a> {
         }
     }
 
-    fn runloop(&self) -> Result<Vec<Task>> {
+    fn runloop(&self, scraped: &mut HashSet<String>) -> Result<Vec<Task>> {
         debug!("Fetching RSS for {}", self.channel.name);
 
         // Fetch the RSS feed
@@ -72,7 +70,9 @@ impl<'a> Scraper<'a> {
                     .filters
                     .iter()
                     .any(|filter| filter.is_match(&entry.title))
+                    && !scraped.contains(&entry.video_id)
                 {
+                    scraped.insert(entry.video_id.to_owned());
                     Some(Task {
                         title: entry.title.to_owned(),
                         video_id: entry.video_id.to_owned(),
@@ -89,8 +89,9 @@ impl<'a> Scraper<'a> {
 
 impl<'a> Module for Scraper<'a> {
     fn run(&self, bus: &mut BusTrx<Message>) -> Result<()> {
+        let mut scraped = HashSet::<String>::new();
         loop {
-            match self.runloop() {
+            match self.runloop(&mut scraped) {
                 Ok(tasks) => {
                     for task in tasks {
                         bus.send(Message::Task(task))?;

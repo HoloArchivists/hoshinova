@@ -43,6 +43,12 @@ impl<T: Debug + Clone + Sync> MessageBus<T> {
         BusTrx { tx, rx }
     }
 
+    /// Returns a closure which can be used to close the MessageBus.
+    pub fn add_closer(&mut self) -> impl Fn() -> Result<(), mpsc::SendError<()>> {
+        let tx = self.tx.clone();
+        move || tx.send(BusMessage::Close).map_err(|_| mpsc::SendError(()))
+    }
+
     /// Starts the message bus. This will block until the bus is closed.
     pub fn start(&mut self) {
         for m in self.rx.iter() {
@@ -108,12 +114,5 @@ impl<T: Debug + Clone + Sync> BusTrx<T> {
             Ok(BusMessage::Close) => Err(mpsc::RecvError),
             Err(e) => Err(e),
         }
-    }
-
-    /// Close the bus. This will cause the bus to stop broadcasting messages.
-    pub fn close(&self) -> Result<(), mpsc::SendError<()>> {
-        self.tx
-            .send(BusMessage::Close)
-            .map_err(|_| mpsc::SendError(()))
     }
 }

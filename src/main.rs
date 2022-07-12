@@ -98,14 +98,14 @@ fn run() -> Result<()> {
         }
 
         // Listen for signals
-        let closer = bus.add_trx();
+        let close = bus.add_closer();
         s.spawn(move |_| {
             let mut signals =
                 Signals::new(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])
                     .expect("Failed to create signal iterator");
             for _ in signals.forever() {
                 info!("Received signal, shutting down");
-                closer.close().expect("Failed to close message bus");
+                close().expect("Failed to close message bus");
                 return;
             }
         });
