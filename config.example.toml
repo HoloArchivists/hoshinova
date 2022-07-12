@@ -4,7 +4,12 @@
 [ytarchive]
 executable_path = "ytarchive"
 working_directory = "temp"
-outtmpl = "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
+args = [
+  "--vp9", "--thumbnail", "--add-metadata",
+  "--threads", "4",
+  "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
+]
+quality = "best"
 
 [scraper.rss]
 poll_interval = "30s"

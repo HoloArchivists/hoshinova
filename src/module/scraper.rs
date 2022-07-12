@@ -1,12 +1,12 @@
 use super::{Message, Module, Task};
 use crate::config;
-use crate::msgbus::BusTrx;
+use crate::msgbus::{BusRx, BusTx};
 use anyhow::Result;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::collections::HashSet;
 
-pub struct Scraper<'a> {
+pub struct RSS<'a> {
     channel: &'a config::ChannelConfig,
     config: &'a config::Config,
     url: String,
@@ -37,7 +37,7 @@ struct Author {
     uri: String,
 }
 
-impl<'a> Scraper<'a> {
+impl<'a> RSS<'a> {
     pub fn new(config: &'a config::Config, index: usize) -> Self {
         let channel = &config.channel[index];
         let url = format!(
@@ -87,14 +87,14 @@ impl<'a> Scraper<'a> {
     }
 }
 
-impl<'a> Module for Scraper<'a> {
-    fn run(&self, bus: &mut BusTrx<Message>) -> Result<()> {
+impl<'a> Module for RSS<'a> {
+    fn run(&self, tx: &BusTx<Message>, rx: &mut BusRx<Message>) -> Result<()> {
         let mut scraped = HashSet::<String>::new();
         loop {
             match self.runloop(&mut scraped) {
                 Ok(tasks) => {
                     for task in tasks {
-                        bus.send(Message::Task(task))?;
+                        tx.send(Message::ToRecord(task))?;
                     }
                 }
                 Err(e) => {
@@ -103,7 +103,8 @@ impl<'a> Module for Scraper<'a> {
             }
 
             // Sleep
-            if bus.wait_until_closed(self.config.scraper.rss.poll_interval) {
+            if rx.wait_until_closed(self.config.scraper.rss.poll_interval) {
+                debug!("Stopped scraping RSS for {}", self.channel.name);
                 return Ok(());
             }
         }
