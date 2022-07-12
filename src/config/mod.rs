@@ -12,7 +12,8 @@ pub struct Config {
 pub struct YtarchiveConfig {
     pub executable_path: String,
     pub working_directory: String,
-    pub outtmpl: String,
+    pub args: Vec<String>,
+    pub quality: String,
 }
 
 #[derive(Deserialize, Debug)]
