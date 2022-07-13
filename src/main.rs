@@ -94,10 +94,8 @@ fn run() -> Result<()> {
     // Start threads
     crossbeam::scope(|s| {
         // Set up modules
-        for i in 0..config.channel.len() {
-            run_module!(bus, s, module::scraper::RSS::new(&config, i));
-            run_module!(bus, s, module::recorder::YTArchive::new(&config));
-        }
+        run_module!(bus, s, module::scraper::RSS::new(&config));
+        run_module!(bus, s, module::recorder::YTArchive::new(&config));
 
         // Listen for signals
         let closer = bus.add_tx();
