@@ -8,7 +8,7 @@ pub mod scraper;
 #[derive(Debug, Clone)]
 pub enum Message {
     ToRecord(Task),
-    ToNotify(Task),
+    ToNotify(Notification),
 }
 
 #[derive(Debug, Clone)]
@@ -17,6 +17,20 @@ pub struct Task {
     pub video_id: String,
     pub channel_name: String,
     pub channel_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub task: Task,
+    pub status: TaskStatus,
+}
+
+#[derive(Debug, Clone)]
+pub enum TaskStatus {
+    Waiting,
+    Recording,
+    Done,
+    Failed,
 }
 
 pub trait Module<T: Debug + Clone + Sync = Message> {

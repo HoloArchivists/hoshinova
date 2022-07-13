@@ -7,9 +7,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 pub struct RSS<'a> {
-    channel: &'a config::ChannelConfig,
     config: &'a config::Config,
-    url: String,
     client: Client,
 }
 
@@ -38,26 +36,24 @@ struct Author {
 }
 
 impl<'a> RSS<'a> {
-    pub fn new(config: &'a config::Config, index: usize) -> Self {
-        let channel = &config.channel[index];
+    pub fn new(config: &'a config::Config) -> Self {
+        let client = Client::new();
+        Self { config, client }
+    }
+
+    fn run_one(
+        &self,
+        scraped: &mut HashSet<String>,
+        channel: &config::ChannelConfig,
+    ) -> Result<Vec<Task>> {
+        debug!("Fetching RSS for {}", channel.name);
+
+        // Fetch the RSS feed
         let url = format!(
             "https://www.youtube.com/feeds/videos.xml?channel_id={}",
             channel.id
         );
-        let client = Client::new();
-        Self {
-            channel,
-            config,
-            url,
-            client,
-        }
-    }
-
-    fn runloop(&self, scraped: &mut HashSet<String>) -> Result<Vec<Task>> {
-        debug!("Fetching RSS for {}", self.channel.name);
-
-        // Fetch the RSS feed
-        let res = self.client.get(&self.url).send()?;
+        let res = self.client.get(&url).send()?;
         let feed: RSSFeed = quick_xml::de::from_slice(&res.bytes()?)?;
 
         // Find matching videos
@@ -65,8 +61,7 @@ impl<'a> RSS<'a> {
             .entries
             .iter()
             .filter_map(move |entry| {
-                if self
-                    .channel
+                if channel
                     .filters
                     .iter()
                     .any(|filter| filter.is_match(&entry.title))
@@ -85,28 +80,47 @@ impl<'a> RSS<'a> {
             })
             .collect())
     }
+
+    fn run_loop(&self, mut scraped: &mut HashSet<String>) -> Vec<Task> {
+        self.config
+            .channel
+            .iter()
+            .flat_map(|channel| {
+                self.run_one(&mut scraped, channel).unwrap_or_else(|e| {
+                    error!("Failed to run RSS for {}: {}", channel.name, e);
+                    vec![]
+                })
+            })
+            .collect()
+    }
 }
 
 impl<'a> Module for RSS<'a> {
     fn run(&self, tx: &BusTx<Message>, rx: &mut BusRx<Message>) -> Result<()> {
         let mut scraped = HashSet::<String>::new();
         loop {
-            match self.runloop(&mut scraped) {
-                Ok(tasks) => {
-                    for task in tasks {
-                        tx.send(Message::ToRecord(task))?;
-                    }
-                }
-                Err(e) => {
-                    error!("Error scraping channel {}: {}", self.channel.name, e);
-                }
+            if self
+                .run_loop(&mut scraped)
+                .iter()
+                .map(|task| {
+                    info!(
+                        "[{}] [{}] Found new matching video: {}",
+                        task.video_id, task.channel_name, task.title,
+                    );
+                    tx.send(Message::ToRecord(task.clone())).is_ok()
+                })
+                .any(|x| !x)
+            {
+                debug!("Failed to send message to bus");
+                break;
             }
 
             // Sleep
             if rx.wait_until_closed(self.config.scraper.rss.poll_interval) {
-                debug!("Stopped scraping RSS for {}", self.channel.name);
-                return Ok(());
+                debug!("Stopped scraping RSS");
+                break;
             }
         }
+        Ok(())
     }
 }

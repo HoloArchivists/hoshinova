@@ -381,6 +381,7 @@ dependencies = [
  "env_logger",
  "humantime",
  "humantime-serde",
+ "lazy_static",
  "log",
  "quick-xml",
  "regex",
