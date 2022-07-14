@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::msgbus::{BusRx, BusTx};
 use anyhow::Result;
 use std::fmt::Debug;
@@ -33,6 +34,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-pub trait Module<T: Debug + Clone + Sync = Message> {
+pub trait Module<'a, T: Debug + Clone + Sync = Message> {
+    fn new(config: &'a Config) -> Self;
     fn run(&self, tx: &BusTx<T>, rx: &mut BusRx<T>) -> Result<()>;
 }
