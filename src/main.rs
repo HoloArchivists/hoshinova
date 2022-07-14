@@ -54,19 +54,6 @@ fn test_ytarchive(path: &str) -> Result<String> {
     Ok(stdout.trim().to_string())
 }
 
-macro_rules! run_module {
-    ($bus:expr, $scope:expr, $module:expr) => {{
-        let tx = $bus.add_tx();
-        let mut rx = $bus.add_rx();
-        let module = $module;
-        $scope.spawn(move |_| {
-            if let Err(e) = module.run(&tx, &mut rx) {
-                error!("{}", e);
-            }
-        })
-    }};
-}
-
 fn run() -> Result<()> {
     // Initialize logging
     env_logger::init();
@@ -94,6 +81,19 @@ fn run() -> Result<()> {
     // Start threads
     crossbeam::scope(|s| {
         // Set up modules
+        macro_rules! run_module {
+            ($bus:expr, $scope:expr, $module:expr) => {{
+                let tx = $bus.add_tx();
+                let mut rx = $bus.add_rx();
+                let module = $module;
+                $scope.spawn(move |_| {
+                    if let Err(e) = module.run(&tx, &mut rx) {
+                        error!("{}", e);
+                    }
+                })
+            }};
+        }
+
         run_module!(bus, s, module::scraper::RSS::new(&config));
         run_module!(bus, s, module::recorder::YTArchive::new(&config));
 

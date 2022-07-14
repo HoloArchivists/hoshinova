@@ -36,11 +36,6 @@ struct Author {
 }
 
 impl<'a> RSS<'a> {
-    pub fn new(config: &'a config::Config) -> Self {
-        let client = Client::new();
-        Self { config, client }
-    }
-
     fn run_one(
         &self,
         scraped: &mut HashSet<String>,
@@ -95,7 +90,12 @@ impl<'a> RSS<'a> {
     }
 }
 
-impl<'a> Module for RSS<'a> {
+impl<'a> Module<'a> for RSS<'a> {
+    fn new(config: &'a config::Config) -> Self {
+        let client = Client::new();
+        Self { config, client }
+    }
+
     fn run(&self, tx: &BusTx<Message>, rx: &mut BusRx<Message>) -> Result<()> {
         let mut scraped = HashSet::<String>::new();
         loop {
