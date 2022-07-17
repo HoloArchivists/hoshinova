@@ -33,6 +33,7 @@ pub struct ChannelConfig {
     pub name: String,
     #[serde(with = "serde_regex")]
     pub filters: Vec<regex::Regex>,
+    pub outpath: String,
 }
 
 pub fn load_config(path: &str) -> Result<Config> {

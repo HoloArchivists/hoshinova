@@ -1,3 +1,5 @@
+#![feature(io_error_more)]
+
 #[macro_use]
 extern crate log;
 use crate::module::Module;
