@@ -68,6 +68,7 @@ impl<'a> RSS<'a> {
                         video_id: entry.video_id.to_owned(),
                         channel_name: entry.author.name.to_owned(),
                         channel_id: entry.channel_id.to_owned(),
+                        output_directory: channel.outpath.clone(),
                     })
                 } else {
                     None

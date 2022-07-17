@@ -1,3 +1,4 @@
+use self::recorder::YTAStatus;
 use crate::config::Config;
 use crate::msgbus::{BusRx, BusTx};
 use anyhow::Result;
@@ -10,6 +11,7 @@ pub mod scraper;
 pub enum Message {
     ToRecord(Task),
     ToNotify(Notification),
+    RecordingStatus(RecordingStatus),
 }
 
 #[derive(Debug, Clone)]
@@ -18,12 +20,19 @@ pub struct Task {
     pub video_id: String,
     pub channel_name: String,
     pub channel_id: String,
+    pub output_directory: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Notification {
     pub task: Task,
     pub status: TaskStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordingStatus {
+    pub task: Task,
+    pub status: YTAStatus,
 }
 
 #[derive(Debug, Clone)]

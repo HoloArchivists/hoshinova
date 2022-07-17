@@ -43,7 +43,7 @@ impl<T: Debug + Clone + Sync> MessageBus<T> {
             self.bus.broadcast(m.clone());
             match m {
                 BusMessage::Message(m) => {
-                    debug!("Received message: {:?}", m);
+                    trace!("Received message: {:?}", m);
                 }
                 BusMessage::Close => {
                     debug!("Received close message");

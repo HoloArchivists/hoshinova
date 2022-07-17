@@ -1,0 +1,33 @@
+# hoshinova configuration file
+# Copy this file to config.toml and update it as needed.
+
+[ytarchive]
+executable_path = "ytarchive"
+working_directory = "temp"
+args = [
+  "--vp9", "--thumbnail", "--add-metadata",
+  "--threads", "4",
+  "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
+]
+quality = "best"
+
+[scraper.rss]
+poll_interval = "30s"
+
+[[channel]]
+id = "UCP0BspO_AMEe3aQqqpo89Dg"
+name = "Moona Hoshinova"
+filters = ["(?i)MoonUtau|Karaoke|Archive"]
+outpath = "./videos/moona"
+
+[[channel]]
+id = "UC--zuEfONeFXPvLqX0Kvbuw"
+name = "松永依織 / IORI MATSUNAGA"
+filters = ["(?i)歌"]
+outpath = "./videos/iori"
+
+[[channel]]
+id = "UCr9p1ZjLKgfaoqNorY7PiWQ"
+name = "ayamy あやみちゃんねる"
+filters = ["(?i)ASMR"]
+outpath = "./videos/ayamy"

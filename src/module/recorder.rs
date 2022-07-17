@@ -1,35 +1,40 @@
 use super::{Message, Module, Notification, Task, TaskStatus};
 use crate::{
     config,
+    module::RecordingStatus,
     msgbus::{BusRx, BusTx},
 };
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::io::{BufRead, BufReader, Read};
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::{fs, process::Stdio};
+use std::{io::Read, path::Path};
 
 pub struct YTArchive<'a> {
     config: &'a config::Config,
 }
 
-#[derive(Debug)]
-enum RecMsg {
-    Event(Notification),
-    Close,
-}
-
 impl<'a> YTArchive<'a> {
-    fn record(&self, task: Task, msg: &BusTx<Message>) -> Result<()> {
+    fn record(&self, task: Task, bus: &BusTx<Message>) -> Result<()> {
         // Ensure the working directory exists
         let cfg = &self.config.ytarchive;
-        std::fs::create_dir_all(&cfg.working_directory)
+        fs::create_dir_all(&cfg.working_directory)
             .map_err(|e| anyhow!("Failed to create working directory: {}", e))?;
+
+        // Ensure the output directory exists
+        fs::create_dir_all(&task.output_directory)
+            .map_err(|e| anyhow!("Failed to create output directory: {:?}", e))?;
 
         // Construct the command line arguments
         let mut args = cfg.args.clone();
+
+        // Add the --wait flag if not present
+        if !args.contains(&"-w".to_string()) && !args.contains(&"--wait".to_string()) {
+            args.push("--wait".to_string());
+        }
+
         args.extend(vec![
             format!("https://youtu.be/{}", task.video_id),
             cfg.quality.clone(),
@@ -49,6 +54,7 @@ impl<'a> YTArchive<'a> {
             .spawn()
             .map_err(|e| anyhow!("Failed to start process: {}", e))?;
 
+        // Grab stdout/stderr byte iterators
         let mut stdout = process
             .stdout
             .take()
@@ -60,24 +66,44 @@ impl<'a> YTArchive<'a> {
             .ok_or(anyhow!("Failed to take stderr"))?
             .bytes();
 
+        // Create a channel to consolidate stdout and stderr
         let (tx, rx) = crossbeam::channel::unbounded();
 
+        // Flag to mark when the process has exited
         let done = AtomicBool::new(false);
 
-        crossbeam::scope(|s| {
+        let status = crossbeam::scope(|s| {
             macro_rules! read_line {
-                ($reader:expr) => {{
-                    let mut bytes = Vec::new();
-                    for byte in $reader {
-                        match byte {
-                            Ok(b'\n') | Ok(b'\r') => break,
-                            Ok(byte) => bytes.push(byte),
-                            _ => (),
-                        };
+                ($reader:expr, $tx:expr) => {{
+                    // Read bytes until a \r or \n is returned
+                    let bytes = $reader
+                        .by_ref()
+                        .take_while(|byte| match byte {
+                            Ok(b'\n') | Ok(b'\r') => false,
+                            Ok(_) => true,
+                            _ => false,
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap_or(Vec::new());
+
+                    // Skip if there are no bytes
+                    if bytes.is_empty() {
+                        continue;
                     }
-                    match std::str::from_utf8(&bytes) {
-                        Ok(line) => Ok(line.to_owned()),
-                        Err(e) => Err(anyhow!("Failed to read utf8: {:?}", e)),
+
+                    // Convert to a string
+                    let line = match std::str::from_utf8(&bytes) {
+                        Ok(line) => line.to_owned(),
+                        Err(e) => {
+                            trace!("Failed to read utf8: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    // Send the line to the channel
+                    if let Err(e) = $tx.send(line) {
+                        trace!("Failed to send line: {:?}", e);
+                        return;
                     }
                 }};
             }
@@ -85,36 +111,14 @@ impl<'a> YTArchive<'a> {
             // Read stdout
             let h_stdout = s.spawn(|_| {
                 while !done.load(Ordering::Relaxed) {
-                    match read_line!(&mut stdout) {
-                        Ok(line) => {
-                            if let Err(e) = tx.send(line) {
-                                trace!("Failed to send stdout: {}", e);
-                                return;
-                            }
-                        }
-                        Err(e) => {
-                            trace!("Failed to read stdout: {}", e);
-                            return;
-                        }
-                    };
+                    read_line!(&mut stdout, tx);
                 }
             });
 
             // Read stderr
             let h_stderr = s.spawn(|_| {
                 while !done.load(Ordering::Relaxed) {
-                    match read_line!(&mut stderr) {
-                        Ok(line) => {
-                            if let Err(e) = tx.send(line) {
-                                trace!("Failed to send stderr: {}", e);
-                                return;
-                            }
-                        }
-                        Err(e) => {
-                            trace!("Failed to read stderr: {}", e);
-                            return;
-                        }
-                    };
+                    read_line!(&mut stderr, tx);
                 }
             });
 
@@ -126,36 +130,41 @@ impl<'a> YTArchive<'a> {
                     // Stop when done
                     if done.load(Ordering::Relaxed) {
                         break;
-                    } else if line == "" {
-                        continue;
                     }
 
-                    trace!("[{}] {}", task.video_id, line);
+                    trace!("[{}][yta:out] {}", task.video_id, line);
 
                     let old = status.clone();
                     status.parse_line(&line);
-                    trace!("[{}] {:?}", task.video_id, status);
+
+                    // Push the current status to the bus
+                    if let Err(_) = bus.send(Message::RecordingStatus(RecordingStatus {
+                        task: task.clone(),
+                        status: status.clone(),
+                    })) {
+                        break;
+                    }
 
                     // Check if status changed
                     if old.state != status.state {
                         let err = match status.state {
                             YTAState::Waiting(_) => {
                                 info!("[{}] Waiting for stream to go live", task.video_id);
-                                msg.send(Message::ToNotify(Notification {
+                                bus.send(Message::ToNotify(Notification {
                                     task: task.clone(),
                                     status: TaskStatus::Waiting,
                                 }))
                             }
                             YTAState::Recording => {
                                 info!("[{}] Recording started", task.video_id);
-                                msg.send(Message::ToNotify(Notification {
+                                bus.send(Message::ToNotify(Notification {
                                     task: task.clone(),
                                     status: TaskStatus::Recording,
                                 }))
                             }
                             YTAState::Finished => {
                                 info!("[{}] Recording finished", task.video_id);
-                                msg.send(Message::ToNotify(Notification {
+                                bus.send(Message::ToNotify(Notification {
                                     task: task.clone(),
                                     status: TaskStatus::Done,
                                 }))
@@ -166,7 +175,7 @@ impl<'a> YTArchive<'a> {
                             }
                             YTAState::Interrupted => {
                                 info!("[{}] Recording failed: interrupted", task.video_id);
-                                msg.send(Message::ToNotify(Notification {
+                                bus.send(Message::ToNotify(Notification {
                                     task: task.clone(),
                                     status: TaskStatus::Failed,
                                 }))
@@ -175,6 +184,7 @@ impl<'a> YTArchive<'a> {
                         }
                         .is_err();
 
+                        // Exit the loop if message failed to send
                         if err {
                             break;
                         }
@@ -195,14 +205,62 @@ impl<'a> YTArchive<'a> {
             done.store(true, Ordering::Relaxed);
             debug!("[{}] Process exited with {:?}", video_id, result);
 
+            // Send a blank message to unblock the status monitor thread
+            let _ = tx.try_send("".into());
+
             // Wait for threads to finish
             trace!("[{}] Stdout monitor quit: {:?}", video_id, h_stdout.join());
             trace!("[{}] Stderr monitor quit: {:?}", video_id, h_stderr.join());
-            trace!("[{}] Status monitor quit: {:?}", video_id, h_status.join());
-        })
-        .map_err(|e| anyhow!("Failed to exit: {:?}", e))?;
+            let status = h_status.join();
+            trace!("[{}] Status monitor quit: {:?}", video_id, status);
 
-        Ok(())
+            // Return the status
+            status.map_err(|e| anyhow!("Status monitor thread panicked: {:?}", e))
+        })
+        .map_err(|e| anyhow!("Failed to exit: {:?}", e))??;
+
+        // Move the video to the output directory
+        let frompath = status
+            .output_file
+            .ok_or(anyhow!("ytarchive did not emit an output file"))?;
+        let frompath = Path::new(&frompath);
+        let filename = frompath
+            .file_name()
+            .ok_or(anyhow!("Failed to get filename"))?;
+        let destpath = Path::new(&task.output_directory).join(filename);
+
+        // Try to rename the file into the output directory
+        match fs::rename(frompath, &destpath) {
+            Ok(()) => {
+                info!(
+                    "[{}] Moved output file to {}",
+                    task.video_id,
+                    destpath.display(),
+                );
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+                debug!(
+                    "[{}] Failed to rename file to output, trying to copy",
+                    task.video_id
+                );
+
+                // Copy the file into the output directory
+                fs::copy(frompath, &destpath)
+                    .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
+                info!(
+                    "[{}] Copied output file to {}, removing original",
+                    task.video_id,
+                    destpath.display(),
+                );
+                fs::remove_file(frompath)
+                    .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))
+            }
+            Err(e) => {
+                error!("[{}] Failed to move output file: {:?}", task.video_id, e);
+                Err(anyhow!("Failed to move output file: {:?}", e))
+            }
+        }
     }
 }
 
