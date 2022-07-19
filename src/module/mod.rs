@@ -1,9 +1,11 @@
 use self::recorder::YTAStatus;
 use crate::config::Config;
-use crate::msgbus::{BusRx, BusTx};
 use anyhow::Result;
+use async_trait::async_trait;
 use std::fmt::Debug;
+use tokio::sync::mpsc;
 
+pub mod notifier;
 pub mod recorder;
 pub mod scraper;
 
@@ -43,7 +45,8 @@ pub enum TaskStatus {
     Failed,
 }
 
+#[async_trait]
 pub trait Module<'a, T: Debug + Clone + Sync = Message> {
     fn new(config: &'a Config) -> Self;
-    fn run(&self, tx: &BusTx<T>, rx: &mut BusRx<T>) -> Result<()>;
+    async fn run(&self, tx: &mpsc::Sender<T>, rx: &mut mpsc::Receiver<T>) -> Result<()>;
 }

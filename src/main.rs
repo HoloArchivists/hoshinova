@@ -1,5 +1,3 @@
-#![feature(io_error_more)]
-
 #[macro_use]
 extern crate log;
 use crate::module::Module;
@@ -56,7 +54,8 @@ fn test_ytarchive(path: &str) -> Result<String> {
     Ok(stdout.trim().to_string())
 }
 
-fn run() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
     info!("hoshinova v{}", env!("CARGO_PKG_VERSION"));
@@ -80,44 +79,40 @@ fn run() -> Result<()> {
     // Set up message bus
     let mut bus = MessageBus::new(32);
 
-    // Start threads
-    crossbeam::scope(|s| {
-        // Set up modules
-        macro_rules! run_module {
-            ($bus:expr, $scope:expr, $module:expr) => {{
-                let tx = $bus.add_tx();
-                let mut rx = $bus.add_rx();
-                let module = $module;
-                $scope.spawn(move |_| {
-                    if let Err(e) = module.run(&tx, &mut rx) {
-                        error!("{}", e);
-                    }
-                })
-            }};
-        }
+    // Set up modules
+    macro_rules! run_module {
+        ($bus:expr, $module:expr) => {{
+            let tx = $bus.add_tx();
+            let mut rx = $bus.add_rx();
+            let module = $module;
+            tokio::spawn(async move {
+                if let Err(e) = module.run(&tx, &mut rx).await {
+                    error!("{}", e);
+                }
+            })
+        }};
+    }
 
-        run_module!(bus, s, module::scraper::RSS::new(&config));
-        run_module!(bus, s, module::recorder::YTArchive::new(&config));
+    run_module!(bus, module::scraper::RSS::new(&config));
+    run_module!(bus, module::recorder::YTArchive::new(&config));
 
-        // Listen for signals
-        let closer = bus.add_tx();
-        s.spawn(move |_| {
-            let mut signals =
-                Signals::new(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])
-                    .expect("Failed to create signal iterator");
-            for _ in signals.forever() {
-                info!("Received signal, shutting down");
-                closer.close().expect("Failed to close message bus");
-                return;
-            }
-        });
+    // Listen for signals
+    tokio::spawn(async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Unable to listen for SIGINT");
 
-        // Start message dispatcher
-        s.spawn(|_| bus.start());
-    })
-    .map_err(|e| anyhow!("Could not exit cleanly: {:?}", e))
+        info!("Received signal, shutting down");
+        bus.close();
+    });
+
+    // Start message dispatcher
+    tokio::task::spawn(bus.start());
+
+    Ok(())
 }
 
+/*
 fn main() {
     if let Err(e) = run() {
         error!("{}", e);
@@ -125,3 +120,4 @@ fn main() {
     }
     debug!("Exit");
 }
+*/
