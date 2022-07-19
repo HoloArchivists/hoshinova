@@ -1,30 +1,40 @@
 use super::{Message, Module, Notification, Task, TaskStatus};
-use crate::{
-    config,
-    module::RecordingStatus,
-    msgbus::{BusRx, BusTx},
-};
+use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{fs, process::Stdio};
-use std::{io::Read, path::Path};
+use std::{
+    fs,
+    path::Path,
+    process::Stdio,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+use tokio::{
+    io::{AsyncReadExt, BufReader},
+    sync::mpsc,
+};
 
 pub struct YTArchive<'a> {
-    config: &'a config::Config,
+    config: &'a Config,
 }
 
 impl<'a> YTArchive<'a> {
-    fn record(&self, task: Task, bus: &BusTx<Message>) -> Result<()> {
+    async fn record(cfg: Config, task: Task, bus: &mut mpsc::Sender<Message>) -> Result<()> {
         // Ensure the working directory exists
-        let cfg = &self.config.ytarchive;
-        fs::create_dir_all(&cfg.working_directory)
+        // let cfg = &self.config.ytarchive;
+        let cfg = cfg.ytarchive;
+        tokio::fs::create_dir_all(&cfg.working_directory)
+            .await
             .map_err(|e| anyhow!("Failed to create working directory: {}", e))?;
 
         // Ensure the output directory exists
-        fs::create_dir_all(&task.output_directory)
+        tokio::fs::create_dir_all(&task.output_directory)
+            .await
             .map_err(|e| anyhow!("Failed to create output directory: {:?}", e))?;
 
         // Construct the command line arguments
@@ -45,7 +55,7 @@ impl<'a> YTArchive<'a> {
             "[{}] Starting ytarchive with args {:?}",
             task.video_id, args
         );
-        let mut process = std::process::Command::new(&cfg.executable_path)
+        let mut process = tokio::process::Command::new(&cfg.executable_path)
             .args(args)
             .current_dir(&cfg.working_directory)
             .stdin(Stdio::null())
@@ -55,169 +65,185 @@ impl<'a> YTArchive<'a> {
             .map_err(|e| anyhow!("Failed to start process: {}", e))?;
 
         // Grab stdout/stderr byte iterators
-        let mut stdout = process
-            .stdout
-            .take()
-            .ok_or(anyhow!("Failed to take stdout"))?
-            .bytes();
-        let mut stderr = process
-            .stderr
-            .take()
-            .ok_or(anyhow!("Failed to take stderr"))?
-            .bytes();
+        let mut stdout = BufReader::new(
+            process
+                .stdout
+                .take()
+                .ok_or(anyhow!("Failed to take stdout"))?,
+        );
+        let mut stderr = BufReader::new(
+            process
+                .stderr
+                .take()
+                .ok_or(anyhow!("Failed to take stderr"))?,
+        );
 
         // Create a channel to consolidate stdout and stderr
-        let (tx, rx) = crossbeam::channel::unbounded();
+        let (tx, mut rx) = mpsc::channel(1);
 
         // Flag to mark when the process has exited
-        let done = AtomicBool::new(false);
+        let done = Arc::from(AtomicBool::new(false));
 
-        let status = crossbeam::scope(|s| {
-            macro_rules! read_line {
-                ($reader:expr, $tx:expr) => {{
-                    // Read bytes until a \r or \n is returned
-                    let bytes = $reader
-                        .by_ref()
-                        .take_while(|byte| match byte {
-                            Ok(b'\n') | Ok(b'\r') => false,
-                            Ok(_) => true,
-                            _ => false,
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap_or(Vec::new());
-
-                    // Skip if there are no bytes
-                    if bytes.is_empty() {
-                        continue;
-                    }
-
-                    // Convert to a string
-                    let line = match std::str::from_utf8(&bytes) {
-                        Ok(line) => line.to_owned(),
-                        Err(e) => {
-                            trace!("Failed to read utf8: {:?}", e);
-                            return;
+        // tokio_scoped::scope(|s| async {
+        macro_rules! read_line {
+            ($reader:expr, $tx:expr) => {{
+                // Read bytes until a \r or \n is returned
+                let mut bytes = Vec::new();
+                loop {
+                    match $reader.read_u8().await {
+                        Ok(byte) => {
+                            if byte == b'\r' || byte == b'\n' {
+                                break;
+                            }
+                            bytes.push(byte);
                         }
-                    };
+                        _ => break,
+                    }
+                }
 
-                    // Send the line to the channel
-                    if let Err(e) = $tx.send(line) {
-                        trace!("Failed to send line: {:?}", e);
+                // Skip if there are no bytes
+                if bytes.is_empty() {
+                    continue;
+                }
+
+                // Convert to a string
+                let line = match std::str::from_utf8(&bytes) {
+                    Ok(line) => line.to_owned(),
+                    Err(e) => {
+                        trace!("Failed to read utf8: {:?}", e);
                         return;
                     }
-                }};
+                };
+
+                // Send the line to the channel
+                if let Err(e) = $tx.send(line).await {
+                    trace!("Failed to send line: {:?}", e);
+                    return;
+                }
+            }};
+        }
+
+        // Read stdout
+        let done_clone = done.clone();
+        let video_id = task.video_id.clone();
+        let tx_clone = tx.clone();
+        let h_stdout = tokio::spawn(async move {
+            while !done_clone.load(Ordering::Relaxed) {
+                read_line!(&mut stdout, tx_clone);
             }
+            trace!("[{}] stdout reader exited", video_id);
+        });
 
-            // Read stdout
-            let h_stdout = s.spawn(|_| {
-                while !done.load(Ordering::Relaxed) {
-                    read_line!(&mut stdout, tx);
-                }
-            });
+        // Read stderr
+        let done_clone = done.clone();
+        let video_id = task.video_id.clone();
+        let tx_clone = tx.clone();
+        let h_stderr = tokio::spawn(async move {
+            while !done_clone.load(Ordering::Relaxed) {
+                read_line!(&mut stderr, tx_clone);
+            }
+            trace!("[{}] stderr reader exited", video_id);
+        });
 
-            // Read stderr
-            let h_stderr = s.spawn(|_| {
-                while !done.load(Ordering::Relaxed) {
-                    read_line!(&mut stderr, tx);
-                }
-            });
-
-            // Parse each line
-            let h_status = s.spawn(|_| {
-                let mut status = YTAStatus::new();
-
-                for line in rx {
-                    // Stop when done
-                    if done.load(Ordering::Relaxed) {
-                        break;
-                    }
-
-                    trace!("[{}][yta:out] {}", task.video_id, line);
-
-                    let old = status.clone();
-                    status.parse_line(&line);
-
-                    // Push the current status to the bus
-                    if let Err(_) = bus.send(Message::RecordingStatus(RecordingStatus {
-                        task: task.clone(),
-                        status: status.clone(),
-                    })) {
-                        break;
-                    }
-
-                    // Check if status changed
-                    if old.state != status.state {
-                        let err = match status.state {
-                            YTAState::Waiting(_) => {
-                                info!("[{}] Waiting for stream to go live", task.video_id);
-                                bus.send(Message::ToNotify(Notification {
-                                    task: task.clone(),
-                                    status: TaskStatus::Waiting,
-                                }))
-                            }
-                            YTAState::Recording => {
-                                info!("[{}] Recording started", task.video_id);
-                                bus.send(Message::ToNotify(Notification {
-                                    task: task.clone(),
-                                    status: TaskStatus::Recording,
-                                }))
-                            }
-                            YTAState::Finished => {
-                                info!("[{}] Recording finished", task.video_id);
-                                bus.send(Message::ToNotify(Notification {
-                                    task: task.clone(),
-                                    status: TaskStatus::Done,
-                                }))
-                            }
-                            YTAState::AlreadyProcessed => {
-                                info!("[{}] Video already processed, skipping", task.video_id);
-                                Ok(())
-                            }
-                            YTAState::Interrupted => {
-                                info!("[{}] Recording failed: interrupted", task.video_id);
-                                bus.send(Message::ToNotify(Notification {
-                                    task: task.clone(),
-                                    status: TaskStatus::Failed,
-                                }))
-                            }
-                            _ => Ok(()),
-                        }
-                        .is_err();
-
-                        // Exit the loop if message failed to send
-                        if err {
-                            break;
-                        }
-                    }
-                }
-
-                // Return final status
-                status
-            });
-
-            let video_id = task.video_id.clone();
-            trace!("[{}] Output monitor started", video_id);
-
-            // Wait for the process to exit
-            let result = process.wait();
+        // Wait for the process to exit
+        let done_clone = done.clone();
+        let video_id = task.video_id.clone();
+        let h_wait = tokio::spawn(async move {
+            let result = process.wait().await;
 
             // Stop threads
-            done.store(true, Ordering::Relaxed);
+            done_clone.store(true, Ordering::Relaxed);
             debug!("[{}] Process exited with {:?}", video_id, result);
 
             // Send a blank message to unblock the status monitor thread
-            let _ = tx.try_send("".into());
+            let _ = tx.send("".into());
 
-            // Wait for threads to finish
-            trace!("[{}] Stdout monitor quit: {:?}", video_id, h_stdout.join());
-            trace!("[{}] Stderr monitor quit: {:?}", video_id, h_stderr.join());
-            let status = h_status.join();
-            trace!("[{}] Status monitor quit: {:?}", video_id, status);
+            result
+        });
 
-            // Return the status
-            status.map_err(|e| anyhow!("Status monitor thread panicked: {:?}", e))
-        })
-        .map_err(|e| anyhow!("Failed to exit: {:?}", e))??;
+        // Parse each line
+        let mut status = YTAStatus::new();
+        loop {
+            let line = match rx.recv().await {
+                Some(line) => line,
+                None => break,
+            };
+
+            // Stop when done
+            if done.load(Ordering::Relaxed) {
+                break;
+            }
+
+            trace!("[{}][yta:out] {}", task.video_id, line);
+
+            let old = status.clone();
+            status.parse_line(&line);
+
+            // Push the current status to the bus
+            if let Err(_) = bus
+                .send(Message::RecordingStatus(RecordingStatus {
+                    task: task.clone(),
+                    status: status.clone(),
+                }))
+                .await
+            {
+                break;
+            }
+
+            // Check if status changed
+            if old.state != status.state {
+                let message = match status.state {
+                    YTAState::Waiting(_) => {
+                        info!("[{}] Waiting for stream to go live", task.video_id);
+                        Some(Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: TaskStatus::Waiting,
+                        }))
+                    }
+                    YTAState::Recording => {
+                        info!("[{}] Recording started", task.video_id);
+                        Some(Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: TaskStatus::Recording,
+                        }))
+                    }
+                    YTAState::Finished => {
+                        info!("[{}] Recording finished", task.video_id);
+                        Some(Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: TaskStatus::Done,
+                        }))
+                    }
+                    YTAState::AlreadyProcessed => {
+                        info!("[{}] Video already processed, skipping", task.video_id);
+                        None
+                    }
+                    YTAState::Interrupted => {
+                        info!("[{}] Recording failed: interrupted", task.video_id);
+                        Some(Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: TaskStatus::Failed,
+                        }))
+                    }
+                    _ => None,
+                };
+
+                if let Some(message) = message {
+                    // Exit the loop if message failed to send
+                    if let Err(_) = bus.send(message).await {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let video_id = task.video_id.clone();
+        trace!("[{}] Status loop exited: {:?}", video_id, status);
+
+        // Wait for threads to finish
+        trace!("[{}] Process monitor exited: {:?}", video_id, h_wait.await);
+        trace!("[{}] Stdout monitor quit: {:?}", video_id, h_stdout.await);
+        trace!("[{}] Stderr monitor quit: {:?}", video_id, h_stderr.await);
 
         // Move the video to the output directory
         let frompath = status
@@ -239,7 +265,7 @@ impl<'a> YTArchive<'a> {
                 );
                 Ok(())
             }
-            Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            Err(_) => {
                 debug!(
                     "[{}] Failed to rename file to output, trying to copy",
                     task.video_id
@@ -256,41 +282,41 @@ impl<'a> YTArchive<'a> {
                 fs::remove_file(frompath)
                     .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))
             }
-            Err(e) => {
-                error!("[{}] Failed to move output file: {:?}", task.video_id, e);
-                Err(anyhow!("Failed to move output file: {:?}", e))
-            }
         }
     }
 }
 
+#[async_trait]
 impl<'a> Module<'a> for YTArchive<'a> {
-    fn new(config: &'a config::Config) -> Self {
+    fn new(config: &'a Config) -> Self {
         Self { config }
     }
 
-    fn run(&self, tx: &BusTx<Message>, rx: &mut BusRx<Message>) -> Result<()> {
-        let res = crossbeam::scope(|s| {
-            // Listen for new messages
-            loop {
-                match rx.recv() {
-                    Ok(Message::ToRecord(task)) => {
-                        debug!("Spawning thread for task: {:?}", task);
-                        let tx = tx.clone();
-                        s.spawn(move |_| self.record(task, tx));
-                    }
-                    Err(_) => break,
-                    _ => (),
+    async fn run(
+        &self,
+        tx: &mpsc::Sender<Message>,
+        rx: &mut mpsc::Receiver<Message>,
+    ) -> Result<()> {
+        // Listen for new messages
+        loop {
+            match rx.recv().await {
+                Some(Message::ToRecord(task)) => {
+                    debug!("Spawning thread for task: {:?}", task);
+                    let mut tx = tx.clone();
+                    let cfg = self.config.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = YTArchive::record(cfg, task, &mut tx).await {
+                            error!("Failed to record task: {:?}", e);
+                        };
+                    });
                 }
+                None => break,
+                _ => (),
             }
-
-            debug!("Loop exited. Waiting for all threads to finish...");
-        })
-        .map(|_| ())
-        .map_err(|e| anyhow!("{:?}", e));
+        }
 
         debug!("YTArchive module finished");
-        return res;
+        Ok(())
     }
 }
 

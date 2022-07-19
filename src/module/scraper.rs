@@ -1,10 +1,12 @@
 use super::{Message, Module, Task};
 use crate::config;
-use crate::msgbus::{BusRx, BusTx};
 use anyhow::Result;
+use async_trait::async_trait;
+use futures::stream::FuturesUnordered;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::collections::HashSet;
+use tokio::sync::mpsc;
 
 pub struct RSS<'a> {
     config: &'a config::Config,
@@ -91,36 +93,42 @@ impl<'a> RSS<'a> {
     }
 }
 
+#[async_trait]
 impl<'a> Module<'a> for RSS<'a> {
     fn new(config: &'a config::Config) -> Self {
         let client = Client::new();
         Self { config, client }
     }
 
-    fn run(&self, tx: &BusTx<Message>, rx: &mut BusRx<Message>) -> Result<()> {
+    async fn run(
+        &self,
+        tx: &mpsc::Sender<Message>,
+        rx: &mut mpsc::Receiver<Message>,
+    ) -> Result<()> {
         let mut scraped = HashSet::<String>::new();
         loop {
-            if self
-                .run_loop(&mut scraped)
-                .iter()
-                .map(|task| {
-                    info!(
-                        "[{}] [{}] Found new matching video: {}",
-                        task.video_id, task.channel_name, task.title,
-                    );
-                    tx.send(Message::ToRecord(task.clone())).is_ok()
-                })
-                .any(|x| !x)
+            if futures::future::join_all(self.run_loop(&mut scraped).iter().map(|task| async {
+                info!(
+                    "[{}] [{}] Found new matching video: {}",
+                    task.video_id, task.channel_name, task.title,
+                );
+                tx.send(Message::ToRecord(task.clone())).await.is_ok()
+            }))
+            .await
+            .iter()
+            .any(|x| !x)
             {
                 debug!("Failed to send message to bus");
                 break;
             }
 
             // Sleep
-            if rx.wait_until_closed(self.config.scraper.rss.poll_interval) {
-                debug!("Stopped scraping RSS");
-                break;
-            }
+            // tokio::sync::
+
+            // if rx.wait_until_closed(self.config.scraper.rss.poll_interval) {
+            // debug!("Stopped scraping RSS");
+            // break;
+            // }
         }
         Ok(())
     }

@@ -1,14 +1,14 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
     pub channel: Vec<ChannelConfig>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct YtarchiveConfig {
     pub executable_path: String,
     pub working_directory: String,
@@ -16,18 +16,18 @@ pub struct YtarchiveConfig {
     pub quality: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct ScraperConfig {
     pub rss: ScraperRSSConfig,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct ScraperRSSConfig {
     #[serde(with = "humantime_serde")]
     pub poll_interval: std::time::Duration,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct ChannelConfig {
     pub id: String,
     pub name: String,
