@@ -5,7 +5,8 @@ use crate::msgbus::MessageBus;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use signal_hook::iterator::Signals;
-use std::process::Command;
+use std::{process::Command, sync::Arc};
+use tokio::sync::RwLock;
 
 mod config;
 mod module;
@@ -93,21 +94,26 @@ async fn main() -> Result<()> {
         }};
     }
 
-    run_module!(bus, module::scraper::RSS::new(&config));
-    run_module!(bus, module::recorder::YTArchive::new(&config));
+    let config = Arc::new(RwLock::new(config));
+    let h_scraper = run_module!(bus, module::scraper::RSS::new(config.clone()));
+    let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
 
     // Listen for signals
-    tokio::spawn(async {
+    let closer = bus.add_tx();
+    let h_signal = tokio::spawn(async move {
         tokio::signal::ctrl_c()
             .await
             .expect("Unable to listen for SIGINT");
 
         info!("Received signal, shutting down");
-        bus.close();
+        closer.close().await.expect("Failed to close message bus");
     });
 
     // Start message dispatcher
-    tokio::task::spawn(bus.start());
+    let h_bus = tokio::task::spawn(async move { bus.start().await });
+
+    // Wait for all tasks to finish
+    let _ = futures::join!(h_scraper, h_recorder, h_signal, h_bus);
 
     Ok(())
 }
