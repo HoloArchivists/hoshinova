@@ -1,4 +1,5 @@
 use super::{Message, Module, Notification, Task, TaskStatus};
+use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -16,15 +17,15 @@ use std::{
 };
 use tokio::{
     io::{AsyncReadExt, BufReader},
-    sync::mpsc,
+    sync::{mpsc, RwLock},
 };
 
-pub struct YTArchive<'a> {
-    config: &'a Config,
+pub struct YTArchive {
+    config: Arc<RwLock<Config>>,
 }
 
-impl<'a> YTArchive<'a> {
-    async fn record(cfg: Config, task: Task, bus: &mut mpsc::Sender<Message>) -> Result<()> {
+impl YTArchive {
+    async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
         // Ensure the working directory exists
         // let cfg = &self.config.ytarchive;
         let cfg = cfg.ytarchive;
@@ -245,6 +246,10 @@ impl<'a> YTArchive<'a> {
         trace!("[{}] Stdout monitor quit: {:?}", video_id, h_stdout.await);
         trace!("[{}] Stderr monitor quit: {:?}", video_id, h_stderr.await);
 
+        if status.state != YTAState::Finished {
+            return Err(anyhow!("Process exited with status {:?}", status.state));
+        }
+
         // Move the video to the output directory
         let frompath = status
             .output_file
@@ -287,23 +292,20 @@ impl<'a> YTArchive<'a> {
 }
 
 #[async_trait]
-impl<'a> Module<'a> for YTArchive<'a> {
-    fn new(config: &'a Config) -> Self {
+impl Module for YTArchive {
+    fn new(config: Arc<RwLock<Config>>) -> Self {
         Self { config }
     }
 
-    async fn run(
-        &self,
-        tx: &mpsc::Sender<Message>,
-        rx: &mut mpsc::Receiver<Message>,
-    ) -> Result<()> {
+    async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
         // Listen for new messages
         loop {
             match rx.recv().await {
                 Some(Message::ToRecord(task)) => {
                     debug!("Spawning thread for task: {:?}", task);
                     let mut tx = tx.clone();
-                    let cfg = self.config.clone();
+                    let cfg = &*self.config.read().await;
+                    let cfg = cfg.clone();
                     tokio::spawn(async move {
                         if let Err(e) = YTArchive::record(cfg, task, &mut tx).await {
                             error!("Failed to record task: {:?}", e);
