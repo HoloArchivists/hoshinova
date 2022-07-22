@@ -4,13 +4,22 @@ use crate::module::Module;
 use crate::msgbus::MessageBus;
 use anyhow::{anyhow, Result};
 use clap::Parser;
-use signal_hook::iterator::Signals;
 use std::{process::Command, sync::Arc};
 use tokio::sync::RwLock;
 
 mod config;
 mod module;
 mod msgbus;
+
+pub static APP_NAME: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
+pub static APP_USER_AGENT: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/",
+    env!("CARGO_PKG_VERSION"),
+    " (+",
+    env!("CARGO_PKG_HOMEPAGE"),
+    ")"
+);
 
 /// Garbage ytarchive manager
 #[derive(Parser, Debug)]
@@ -59,7 +68,7 @@ fn test_ytarchive(path: &str) -> Result<String> {
 async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
-    info!("hoshinova v{}", env!("CARGO_PKG_VERSION"));
+    info!("{}", APP_NAME);
 
     // Parse command line arguments
     let args = Args::parse();
@@ -78,7 +87,7 @@ async fn main() -> Result<()> {
     );
 
     // Set up message bus
-    let mut bus = MessageBus::new(32);
+    let mut bus = MessageBus::new(16384);
 
     // Set up modules
     macro_rules! run_module {
@@ -97,6 +106,7 @@ async fn main() -> Result<()> {
     let config = Arc::new(RwLock::new(config));
     let h_scraper = run_module!(bus, module::scraper::RSS::new(config.clone()));
     let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
+    let h_notifier = run_module!(bus, module::notifier::Discord::new(config.clone()));
 
     // Listen for signals
     let closer = bus.add_tx();
@@ -113,17 +123,7 @@ async fn main() -> Result<()> {
     let h_bus = tokio::task::spawn(async move { bus.start().await });
 
     // Wait for all tasks to finish
-    let _ = futures::join!(h_scraper, h_recorder, h_signal, h_bus);
-
-    Ok(())
+    futures::try_join!(h_scraper, h_recorder, h_notifier, h_signal, h_bus)
+        .map(|_| ())
+        .map_err(|e| anyhow!("Task errored: {}", e))
 }
-
-/*
-fn main() {
-    if let Err(e) = run() {
-        error!("{}", e);
-        std::process::exit(1);
-    }
-    debug!("Exit");
-}
-*/

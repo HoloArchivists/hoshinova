@@ -26,8 +26,9 @@ pub struct YTArchive {
 
 impl YTArchive {
     async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+        let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
+
         // Ensure the working directory exists
-        // let cfg = &self.config.ytarchive;
         let cfg = cfg.ytarchive;
         tokio::fs::create_dir_all(&cfg.working_directory)
             .await
@@ -52,10 +53,7 @@ impl YTArchive {
         ]);
 
         // Start the process
-        debug!(
-            "[{}] Starting ytarchive with args {:?}",
-            task.video_id, args
-        );
+        debug!("{} Starting ytarchive with args {:?}", task_name, args);
         let mut process = tokio::process::Command::new(&cfg.executable_path)
             .args(args)
             .current_dir(&cfg.working_directory)
@@ -126,35 +124,35 @@ impl YTArchive {
 
         // Read stdout
         let done_clone = done.clone();
-        let video_id = task.video_id.clone();
+        let task_name_clone = task_name.clone();
         let tx_clone = tx.clone();
         let h_stdout = tokio::spawn(async move {
             while !done_clone.load(Ordering::Relaxed) {
                 read_line!(&mut stdout, tx_clone);
             }
-            trace!("[{}] stdout reader exited", video_id);
+            trace!("{} stdout reader exited", task_name_clone);
         });
 
         // Read stderr
         let done_clone = done.clone();
-        let video_id = task.video_id.clone();
+        let task_name_clone = task_name.clone();
         let tx_clone = tx.clone();
         let h_stderr = tokio::spawn(async move {
             while !done_clone.load(Ordering::Relaxed) {
                 read_line!(&mut stderr, tx_clone);
             }
-            trace!("[{}] stderr reader exited", video_id);
+            trace!("{} stderr reader exited", task_name_clone);
         });
 
         // Wait for the process to exit
         let done_clone = done.clone();
-        let video_id = task.video_id.clone();
+        let task_name_clone = task_name.clone();
         let h_wait = tokio::spawn(async move {
             let result = process.wait().await;
 
             // Stop threads
             done_clone.store(true, Ordering::Relaxed);
-            debug!("[{}] Process exited with {:?}", video_id, result);
+            debug!("{} Process exited with {:?}", task_name_clone, result);
 
             // Send a blank message to unblock the status monitor thread
             let _ = tx.send("".into());
@@ -175,7 +173,7 @@ impl YTArchive {
                 break;
             }
 
-            trace!("[{}][yta:out] {}", task.video_id, line);
+            trace!("{}[yta:out] {}", task_name, line);
 
             let old = status.clone();
             status.parse_line(&line);
@@ -195,32 +193,32 @@ impl YTArchive {
             if old.state != status.state {
                 let message = match status.state {
                     YTAState::Waiting(_) => {
-                        info!("[{}] Waiting for stream to go live", task.video_id);
+                        info!("{} Waiting for stream to go live", task_name);
                         Some(Message::ToNotify(Notification {
                             task: task.clone(),
                             status: TaskStatus::Waiting,
                         }))
                     }
                     YTAState::Recording => {
-                        info!("[{}] Recording started", task.video_id);
+                        info!("{} Recording started", task_name);
                         Some(Message::ToNotify(Notification {
                             task: task.clone(),
                             status: TaskStatus::Recording,
                         }))
                     }
                     YTAState::Finished => {
-                        info!("[{}] Recording finished", task.video_id);
+                        info!("{} Recording finished", task_name);
                         Some(Message::ToNotify(Notification {
                             task: task.clone(),
                             status: TaskStatus::Done,
                         }))
                     }
                     YTAState::AlreadyProcessed => {
-                        info!("[{}] Video already processed, skipping", task.video_id);
+                        info!("{} Video already processed, skipping", task_name);
                         None
                     }
                     YTAState::Interrupted => {
-                        info!("[{}] Recording failed: interrupted", task.video_id);
+                        info!("{} Recording failed: interrupted", task_name);
                         Some(Message::ToNotify(Notification {
                             task: task.clone(),
                             status: TaskStatus::Failed,
@@ -238,16 +236,16 @@ impl YTArchive {
             }
         }
 
-        let video_id = task.video_id.clone();
-        trace!("[{}] Status loop exited: {:?}", video_id, status);
+        trace!("{} Status loop exited: {:?}", task_name, status);
 
         // Wait for threads to finish
-        trace!("[{}] Process monitor exited: {:?}", video_id, h_wait.await);
-        trace!("[{}] Stdout monitor quit: {:?}", video_id, h_stdout.await);
-        trace!("[{}] Stderr monitor quit: {:?}", video_id, h_stderr.await);
+        let (r_wait, r_stdout, r_stderr) = futures::join!(h_wait, h_stdout, h_stderr);
+        trace!("{} Process monitor exited: {:?}", task_name, r_wait);
+        trace!("{} Stdout monitor quit: {:?}", task_name, r_stdout);
+        trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
         if status.state != YTAState::Finished {
-            return Err(anyhow!("Process exited with status {:?}", status.state));
+            return Ok(());
         }
 
         // Move the video to the output directory
@@ -263,25 +261,21 @@ impl YTArchive {
         // Try to rename the file into the output directory
         match fs::rename(frompath, &destpath) {
             Ok(()) => {
-                info!(
-                    "[{}] Moved output file to {}",
-                    task.video_id,
-                    destpath.display(),
-                );
+                info!("{} Moved output file to {}", task_name, destpath.display(),);
                 Ok(())
             }
             Err(_) => {
                 debug!(
-                    "[{}] Failed to rename file to output, trying to copy",
-                    task.video_id
+                    "{} Failed to rename file to output, trying to copy",
+                    task_name,
                 );
 
                 // Copy the file into the output directory
                 fs::copy(frompath, &destpath)
                     .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
                 info!(
-                    "[{}] Copied output file to {}, removing original",
-                    task.video_id,
+                    "{} Copied output file to {}, removing original",
+                    task_name,
                     destpath.display(),
                 );
                 fs::remove_file(frompath)
@@ -299,9 +293,9 @@ impl Module for YTArchive {
 
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
         // Listen for new messages
-        loop {
-            match rx.recv().await {
-                Some(Message::ToRecord(task)) => {
+        while let Some(message) = rx.recv().await {
+            match message {
+                Message::ToRecord(task) => {
                     debug!("Spawning thread for task: {:?}", task);
                     let mut tx = tx.clone();
                     let cfg = &*self.config.read().await;
@@ -312,7 +306,6 @@ impl Module for YTArchive {
                         };
                     });
                 }
-                None => break,
                 _ => (),
             }
         }
