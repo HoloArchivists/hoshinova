@@ -1,7 +1,7 @@
-use super::{Message, Module, Notification, Task, TaskStatus};
+use super::{Message, Module, Notification, TaskStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, APP_NAME, APP_USER_AGENT};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;

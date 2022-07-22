@@ -14,6 +14,7 @@ tokio = { version = "1.20.0", features = ["full"] }
 # Web
 actix-web = "4"
 reqwest = { version = "0.11", features = ["gzip", "json"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
 
 # Utilities
 anyhow = "1.0"
@@ -24,7 +25,7 @@ humantime = "2.1.0"
 humantime-serde = "1.1.1"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
-quick-xml = { version = "0.23", features = [ "serialize" ] }
+quick-xml = { version = "0.23", features = ["serialize"] }
 chrono = { version = "0.4.0", features = ["serde"] }
 regex = "1"
 serde_regex = "1.1.0"
@@ -36,3 +37,4 @@ log = "0.4"
 
 [profile.release]
 lto = true
+strip = true
