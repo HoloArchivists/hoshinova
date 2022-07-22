@@ -17,13 +17,13 @@ pub struct RSS {
     client: Client,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct RSSFeed {
     #[serde(rename = "entry", default)]
     entries: Vec<FeedEntry>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct FeedEntry {
     #[serde(rename = "videoId")]
     video_id: String,
@@ -31,23 +31,20 @@ struct FeedEntry {
     channel_id: String,
     title: String,
     author: Author,
-    published: chrono::DateTime<chrono::Utc>,
-    updated: chrono::DateTime<chrono::Utc>,
     group: MediaGroup,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Author {
     name: String,
-    uri: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct MediaGroup {
     thumbnail: Thumbnail,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Thumbnail {
     url: String,
 }

@@ -7,6 +7,7 @@ pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
     pub notifier: NotifierConfig,
+    pub webserver: Option<WebserverConfig>,
     pub channel: Vec<ChannelConfig>,
 }
 
@@ -38,6 +39,11 @@ pub struct NotifierConfig {
 pub struct NotifierDiscordConfig {
     pub webhook_url: String,
     pub notify_on: Vec<TaskStatus>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct WebserverConfig {
+    pub bind_address: String,
 }
 
 #[derive(Clone, Deserialize, Debug)]

@@ -2,6 +2,7 @@
 extern crate log;
 use crate::module::Module;
 use crate::msgbus::MessageBus;
+use actix_web::{App, HttpServer};
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use std::{process::Command, sync::Arc};
@@ -10,6 +11,7 @@ use tokio::sync::RwLock;
 mod config;
 mod module;
 mod msgbus;
+mod web;
 
 pub static APP_NAME: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
 pub static APP_USER_AGENT: &str = concat!(
@@ -67,7 +69,7 @@ fn test_ytarchive(path: &str) -> Result<String> {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    env_logger::init();
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
     info!("{}", APP_NAME);
 
     // Parse command line arguments
@@ -108,6 +110,24 @@ async fn main() -> Result<()> {
     let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
     let h_notifier = run_module!(bus, module::notifier::Discord::new(config.clone()));
 
+    // Start webserver
+    let h_server = tokio::spawn(async move {
+        let config = config.clone();
+        let config = &*config.read().await;
+        if let Some(webserver) = &config.webserver {
+            let ws = HttpServer::new(|| App::new().configure(web::configure))
+                .bind(webserver.bind_address.clone())
+                .map_err(|e| anyhow!("Failed to bind to address: {}", e))?
+                .run();
+            info!("Starting webserver on {}", webserver.bind_address);
+            return ws
+                .await
+                .map_err(|e| anyhow!("Failed to start webserver: {}", e));
+        };
+        debug!("No webserver configured");
+        Ok::<(), anyhow::Error>(())
+    });
+
     // Listen for signals
     let closer = bus.add_tx();
     let h_signal = tokio::spawn(async move {
@@ -123,7 +143,7 @@ async fn main() -> Result<()> {
     let h_bus = tokio::task::spawn(async move { bus.start().await });
 
     // Wait for all tasks to finish
-    futures::try_join!(h_scraper, h_recorder, h_notifier, h_signal, h_bus)
+    futures::try_join!(h_scraper, h_recorder, h_notifier, h_signal, h_bus, h_server)
         .map(|_| ())
         .map_err(|e| anyhow!("Task errored: {}", e))
 }

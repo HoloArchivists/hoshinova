@@ -5,8 +5,7 @@
 executable_path = "ytarchive"
 working_directory = "temp"
 args = [
-  "--vp9", "--thumbnail", "--add-metadata",
-  "--threads", "4",
+  "--vp9", "--thumbnail", "--add-metadata", "--threads", "4",
   "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
 ]
 quality = "best"
@@ -17,6 +16,11 @@ poll_interval = "30s"
 [notifier.discord]
 webhook_url = "https://discordapp.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"
 notify_on = ["waiting", "recording", "done", "failed"]
+
+# Coming soon, a web interface to view and manage tasks.
+# Optional, remove this section to disable.
+[webserver]
+bind_address = "127.0.0.1:1104"
 
 [[channel]]
 id = "UCP0BspO_AMEe3aQqqpo89Dg"
