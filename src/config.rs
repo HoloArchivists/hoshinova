@@ -6,7 +6,7 @@ use serde::Deserialize;
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
-    pub notifier: NotifierConfig,
+    pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
     pub channel: Vec<ChannelConfig>,
 }

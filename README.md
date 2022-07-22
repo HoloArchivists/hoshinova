@@ -13,17 +13,8 @@ Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 ([guide](https://github.com/HoloArchivists/hollow_memories)).
 
 You can
-[download the latest release](https://github.com/HoloArchivists/hoshinova/releases),
-or build it yourself. You'll need to have [Rust](https://www.rust-lang.org/)
-installed.
-
-```bash
-# Clone the repository
-git clone https://github.com/HoloArchivists/hoshinova
-
-# Build and run
-cd hoshinova && cargo run --release
-```
+[download the latest release](https://github.com/HoloArchivists/hoshinova/releases)
+and run it on the terminal.
 
 ## Configure
 

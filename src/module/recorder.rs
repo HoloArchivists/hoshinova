@@ -189,48 +189,50 @@ impl YTArchive {
             }
 
             // Check if status changed
-            if old.state != status.state {
-                let message = match status.state {
-                    YTAState::Waiting(_) => {
-                        info!("{} Waiting for stream to go live", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Waiting,
-                        }))
-                    }
-                    YTAState::Recording => {
-                        info!("{} Recording started", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Recording,
-                        }))
-                    }
-                    YTAState::Finished => {
-                        info!("{} Recording finished", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Done,
-                        }))
-                    }
-                    YTAState::AlreadyProcessed => {
-                        info!("{} Video already processed, skipping", task_name);
-                        None
-                    }
-                    YTAState::Interrupted => {
-                        info!("{} Recording failed: interrupted", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Failed,
-                        }))
-                    }
-                    _ => None,
-                };
+            if old.state == status.state {
+                continue;
+            }
 
-                if let Some(message) = message {
-                    // Exit the loop if message failed to send
-                    if let Err(_) = bus.send(message).await {
-                        break;
-                    }
+            let message = match status.state {
+                YTAState::Waiting(_) => {
+                    info!("{} Waiting for stream to go live", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Waiting,
+                    }))
+                }
+                YTAState::Recording => {
+                    info!("{} Recording started", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Recording,
+                    }))
+                }
+                YTAState::Finished => {
+                    info!("{} Recording finished", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Done,
+                    }))
+                }
+                YTAState::AlreadyProcessed => {
+                    info!("{} Video already processed, skipping", task_name);
+                    None
+                }
+                YTAState::Interrupted => {
+                    info!("{} Recording failed: interrupted", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Failed,
+                    }))
+                }
+                _ => None,
+            };
+
+            if let Some(message) = message {
+                // Exit the loop if message failed to send
+                if let Err(_) = bus.send(message).await {
+                    break;
                 }
             }
         }
@@ -243,6 +245,7 @@ impl YTArchive {
         trace!("{} Stdout monitor quit: {:?}", task_name, r_stdout);
         trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
+        // Skip moving files if it didn't finish
         if status.state != YTAState::Finished {
             return Ok(());
         }
@@ -258,29 +261,26 @@ impl YTArchive {
         let destpath = Path::new(&task.output_directory).join(filename);
 
         // Try to rename the file into the output directory
-        match fs::rename(frompath, &destpath) {
-            Ok(()) => {
-                info!("{} Moved output file to {}", task_name, destpath.display(),);
-                Ok(())
-            }
-            Err(_) => {
-                debug!(
-                    "{} Failed to rename file to output, trying to copy",
-                    task_name,
-                );
+        if let Err(_) = fs::rename(frompath, &destpath) {
+            debug!(
+                "{} Failed to rename file to output, trying to copy",
+                task_name,
+            );
 
-                // Copy the file into the output directory
-                fs::copy(frompath, &destpath)
-                    .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
-                info!(
-                    "{} Copied output file to {}, removing original",
-                    task_name,
-                    destpath.display(),
-                );
-                fs::remove_file(frompath)
-                    .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))
-            }
+            // Copy the file into the output directory
+            fs::copy(frompath, &destpath)
+                .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
+            info!(
+                "{} Copied output file to {}, removing original",
+                task_name,
+                destpath.display(),
+            );
+            fs::remove_file(frompath)
+                .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))?;
         }
+
+        info!("{} Moved output file to {}", task_name, destpath.display());
+        Ok(())
     }
 }
 
