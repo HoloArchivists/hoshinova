@@ -2,21 +2,18 @@
 name = "hoshinova"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/HoloArchivists/hoshinova"
+homepage = "https://github.com/HoloArchivists/hoshinova"
 
 [dependencies]
 # Async
 async-trait = "0.1"
-crossbeam = "0.8"
 futures = "0.3"
 tokio = { version = "1.20.0", features = ["full"] }
-tokio-scoped = "0.2"
-bus = "2.3"
 
 # Web
 actix-web = "4"
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.11", features = ["gzip", "json"] }
 
 # Utilities
 anyhow = "1.0"
@@ -35,7 +32,6 @@ serde_regex = "1.1.0"
 # CLI
 clap = { version = "3.2.8", features = ["derive"] }
 env_logger = "0.8.4"
-signal-hook = "0.3.14"
 log = "0.4"
 
 [profile.release]

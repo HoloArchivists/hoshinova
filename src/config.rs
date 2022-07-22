@@ -1,3 +1,4 @@
+use crate::module::TaskStatus;
 use anyhow::Result;
 use serde::Deserialize;
 
@@ -5,6 +6,7 @@ use serde::Deserialize;
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
+    pub notifier: NotifierConfig,
     pub channel: Vec<ChannelConfig>,
 }
 
@@ -28,12 +30,25 @@ pub struct ScraperRSSConfig {
 }
 
 #[derive(Clone, Deserialize, Debug)]
+pub struct NotifierConfig {
+    pub discord: Option<NotifierDiscordConfig>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct NotifierDiscordConfig {
+    pub webhook_url: String,
+    pub notify_on: Vec<TaskStatus>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
 pub struct ChannelConfig {
     pub id: String,
     pub name: String,
     #[serde(with = "serde_regex")]
     pub filters: Vec<regex::Regex>,
     pub outpath: String,
+    /// If not present, will be fetched during runtime.
+    pub picture_url: Option<String>,
 }
 
 pub fn load_config(path: &str) -> Result<Config> {
