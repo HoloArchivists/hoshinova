@@ -31,8 +31,14 @@ targets=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-
 for target in "${targets[@]}"; do
   echo "Building for $target"
   cross build --target $target --release
-  $upx target/$target/release/hoshinova \
-  || $upx target/$target/release/hoshinova.exe
+  
+  ext=""
+  if [[ $target == *"windows"* ]]; then
+    ext=".exe"
+  fi
+
+  $upx target/$target/release/hoshinova$ext
+  mv target/$target/release/hoshinova$ext target/hoshinova-$target$ext
 done
 
 echo "Done!"

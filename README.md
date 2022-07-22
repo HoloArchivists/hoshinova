@@ -127,6 +127,15 @@ the build environment for cross-compilation.
 
 If you run into any linking issues, run `cargo clean` and try again.
 
+## Debug logging
+
+Run with the environment variable `RUST_LOG=debug` or `RUST_LOG=trace` to enable
+verbose logging.
+
+```
+RUST_LOG=debug cargo run
+```
+
 ## Support
 
 This is very early in development. New features will be added, and existing

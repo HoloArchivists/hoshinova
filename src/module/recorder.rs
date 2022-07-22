@@ -83,7 +83,6 @@ impl YTArchive {
         // Flag to mark when the process has exited
         let done = Arc::from(AtomicBool::new(false));
 
-        // tokio_scoped::scope(|s| async {
         macro_rules! read_line {
             ($reader:expr, $tx:expr) => {{
                 // Read bytes until a \r or \n is returned
