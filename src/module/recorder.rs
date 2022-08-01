@@ -345,11 +345,15 @@ fn strip_ansi(s: &str) -> String {
         static ref RE: Regex = Regex::new(concat!(
             r"[\u001B\u009B][[\\]()#;?]*",
             r"(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|",
-            r"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+            r"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))",
         ))
         .expect("Failed to compile ANSI stripping regex");
     }
-    RE.replace_all(s, "").to_string()
+    let stripped = RE.replace_all(s, "").to_string();
+    stripped
+        .strip_suffix("\u{001b}[K")
+        .unwrap_or(&stripped)
+        .to_string()
 }
 
 impl YTAStatus {
@@ -387,10 +391,10 @@ impl YTAStatus {
             self.state = YTAState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
-                self.video_fragments = x.parse().ok();
+                self.video_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.audio_fragments = x.parse().ok();
+                self.audio_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
                 self.total_size = Some(strip_ansi(x));

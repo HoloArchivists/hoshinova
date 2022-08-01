@@ -26,10 +26,20 @@ pub struct TaskWithStatus {
 
 type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
 
+const INDEX_PAGE: &str = const_format::str_replace!(
+    const_format::str_replace!(
+        include_str!("index.html"),
+        "/*** inject-script ***/",
+        include_str!("script.js"),
+    ),
+    "/*** inject-style ***/",
+    include_str!("pico.min.css"),
+);
+
 async fn index() -> actix_web::Result<impl Responder> {
     Ok(HttpResponse::Ok()
         .insert_header(("Content-Type", "text/html"))
-        .body(include_str!("index.html")))
+        .body(INDEX_PAGE))
 }
 
 async fn api_status(data: TaskMap) -> actix_web::Result<impl Responder> {

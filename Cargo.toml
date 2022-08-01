@@ -19,6 +19,7 @@ openssl-sys = { version = "0.9", features = ["vendored"] }
 # Utilities
 anyhow = "1.0"
 lazy_static = "1.4.0"
+const_format = { version = "0.2.26", features = ["const_generics"] }
 
 # Serde
 humantime = "2.1.0"
