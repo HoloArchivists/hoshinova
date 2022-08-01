@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>hoshinova</title>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir,
+          segoe ui, helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto,
+          arial, sans-serif;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.2em 0.5em;
+      }
+    </style>
+    <script>
+      (() => {
+        const el = (type, children, props) => {
+          const el = document.createElement(type);
+          Object.assign(el, props || {});
+          for (let child of children) {
+            if (typeof child === 'string') {
+              child = document.createTextNode(child);
+            }
+            el.appendChild(child);
+          }
+          return el;
+        };
+
+        const stateSort = [
+          'Idle',
+          'Waiting',
+          'Recording',
+          'Muxing',
+          'Finished',
+          'AlreadyProcessed',
+          'Interrupted',
+        ];
+        const stateString = (state) =>
+          typeof state === 'string' ? state : Object.keys(state)[0];
+        let lastStatus = '';
+        const refresh = async () => {
+          // Fetch the status
+          const statusText = await fetch('/api/status')
+            .then((res) => res.text())
+            .finally(() => {
+              setTimeout(refresh, 1000);
+            });
+
+          // Skip update if the status is the same as last time
+          if (statusText === lastStatus) return;
+          lastStatus = statusText;
+          const status = JSON.parse(statusText);
+
+          // Generate a table
+          const table = el('table', [
+            el('tr', [
+              el('th', ['Video ID']),
+              el('th', ['Channel']),
+              el('th', ['Title']),
+              el('th', ['Status']),
+              el('th', ['Progress']),
+            ]),
+            ...status
+              .sort(
+                (a, b) =>
+                  stateSort.indexOf(stateString(a.status.state)) -
+                  stateSort.indexOf(stateString(b.status.state))
+              )
+              .map(({ task, status }) =>
+                el('tr', [
+                  el('td', [task.video_id], { style: 'font-family:monospace' }),
+                  el('td', [
+                    el('a', [task.channel_name], {
+                      href:
+                        'https://www.youtube.com/channel/' + task.channel_id,
+                    }),
+                  ]),
+                  el('td', [
+                    el('a', [task.title], {
+                      href: 'https://www.youtube.com/watch?v=' + task.video_id,
+                    }),
+                  ]),
+                  el('td', [
+                    typeof status.state === 'string'
+                      ? status.state
+                      : 'Waiting' in status.state
+                      ? 'Waiting'
+                      : JSON.stringify(status.state),
+                  ]),
+                  el(
+                    'td',
+                    status.total_size === null
+                      ? ['None']
+                      : [
+                          el('div', [
+                            `${status.video_fragments} video, ${status.audio_fragments} audio`,
+                          ]),
+                          el('div', [`${status.total_size}`]),
+                        ]
+                  ),
+                ])
+              ),
+          ]);
+
+          // Replace the table
+          document.getElementById('status').replaceChildren(table);
+        };
+        refresh();
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="status">Loading...</div>
+  </body>
+</html>

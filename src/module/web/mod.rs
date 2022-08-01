@@ -6,6 +6,7 @@ use crate::{
 use actix_web::{web::Data, App, HttpResponse, HttpServer, Responder};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::{
@@ -17,7 +18,7 @@ pub struct WebServer {
     config: Arc<RwLock<Config>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TaskWithStatus {
     pub task: Task,
     pub status: YTAStatus,
@@ -25,24 +26,26 @@ pub struct TaskWithStatus {
 
 type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
 
-async fn index(data: TaskMap) -> actix_web::Result<impl Responder> {
-    Ok(data
-        .read()
-        .await
-        .iter()
-        .map(|(k, v)| format!("[{}] {}", k, v.task.title))
-        .collect::<Vec<_>>()
-        .join("\n"))
-    .map(|s| {
-        HttpResponse::Ok()
-            .insert_header(("Content-Type", "text/plain; charset=utf-8"))
-            .body(s)
-    })
+async fn index() -> actix_web::Result<impl Responder> {
+    Ok(HttpResponse::Ok()
+        .insert_header(("Content-Type", "text/html"))
+        .body(include_str!("index.html")))
+}
+
+async fn api_status(data: TaskMap) -> actix_web::Result<impl Responder> {
+    Ok(HttpResponse::Ok().json(
+        data.read()
+            .await
+            .iter()
+            .map(|(_, v)| v.to_owned())
+            .collect::<Vec<_>>(),
+    ))
 }
 
 /// Configure routes for the webserver
 fn configure(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.route("/", actix_web::web::get().to(index));
+    cfg.route("/api/status", actix_web::web::get().to(api_status));
 }
 
 impl WebServer {
@@ -110,6 +113,7 @@ impl Module for WebServer {
                 .app_data(tasks.clone())
                 .configure(configure)
         })
+        .disable_signals()
         .bind(ws_cfg.bind_address)
         .map_err(|e| anyhow!("Failed to bind to address: {}", e))?
         .run();

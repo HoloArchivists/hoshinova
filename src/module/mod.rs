@@ -18,7 +18,7 @@ pub enum Message {
     RecordingStatus(RecordingStatus),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Task {
     pub title: String,
     pub video_id: String,

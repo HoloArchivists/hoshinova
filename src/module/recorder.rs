@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::Serialize;
 use std::{
     fs,
     path::Path,
@@ -315,11 +316,12 @@ impl Module for YTArchive {
 }
 
 /// The current state of ytarchive.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct YTAStatus {
     version: Option<String>,
     state: YTAState,
     last_output: Option<String>,
+    last_update: chrono::DateTime<chrono::Utc>,
     video_fragments: Option<u32>,
     audio_fragments: Option<u32>,
     total_size: Option<String>,
@@ -327,7 +329,7 @@ pub struct YTAStatus {
     output_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum YTAState {
     Idle,
     Waiting(Option<DateTime<Utc>>),
@@ -356,6 +358,7 @@ impl YTAStatus {
             version: None,
             state: YTAState::Idle,
             last_output: None,
+            last_update: chrono::Utc::now(),
             video_fragments: None,
             audio_fragments: None,
             total_size: None,
@@ -378,6 +381,7 @@ impl YTAStatus {
     ///   Final file: /path/to/output.mp4
     pub fn parse_line(&mut self, line: &str) {
         self.last_output = Some(line.to_string());
+        self.last_update = chrono::Utc::now();
 
         if line.starts_with("Video Fragments: ") {
             self.state = YTAState::Recording;
