@@ -8,13 +8,32 @@ will still undergo a lot of breaking changes. Upgrade with caution.
 
 ## Install
 
+You can get hoshinova using either one of the following methods.
+
+### Get the latest release
+
+You can download the latest binaries
+[from the releases page](https://github.com/HoloArchivists/hoshinova/releases).
+
 Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 [ffmpeg](https://ffmpeg.org/) installed and executable in your PATH
 ([guide](https://github.com/HoloArchivists/hollow_memories)).
 
-You can
-[download the latest release](https://github.com/HoloArchivists/hoshinova/releases)
-and run it on the terminal.
+### Run from source
+
+```bash
+# Clone the repository
+git clone https://github.com/HoloArchivists/hoshinova
+
+# Build and run
+cd hoshinova && cargo run
+```
+
+### Get the docker image
+
+```
+docker pull ghcr.io/holoarchivists/hoshinova
+```
 
 ## Configure
 

@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, RwLock};
 pub mod notifier;
 pub mod recorder;
 pub mod scraper;
+pub mod web;
 
 #[derive(Debug, Clone)]
 pub enum Message {

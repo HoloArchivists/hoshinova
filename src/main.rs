@@ -2,7 +2,6 @@
 extern crate log;
 use crate::module::Module;
 use crate::msgbus::MessageBus;
-use actix_web::{App, HttpServer};
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use std::{process::Command, sync::Arc};
@@ -11,7 +10,6 @@ use tokio::sync::RwLock;
 mod config;
 mod module;
 mod msgbus;
-mod web;
 
 pub static APP_NAME: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
 pub static APP_USER_AGENT: &str = concat!(
@@ -109,24 +107,7 @@ async fn main() -> Result<()> {
     let h_scraper = run_module!(bus, module::scraper::RSS::new(config.clone()));
     let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
     let h_notifier = run_module!(bus, module::notifier::Discord::new(config.clone()));
-
-    // Start webserver
-    let h_server = tokio::spawn(async move {
-        let config = config.clone();
-        let config = &*config.read().await;
-        if let Some(webserver) = &config.webserver {
-            let ws = HttpServer::new(|| App::new().configure(web::configure))
-                .bind(webserver.bind_address.clone())
-                .map_err(|e| anyhow!("Failed to bind to address: {}", e))?
-                .run();
-            info!("Starting webserver on {}", webserver.bind_address);
-            return ws
-                .await
-                .map_err(|e| anyhow!("Failed to start webserver: {}", e));
-        };
-        debug!("No webserver configured");
-        Ok::<(), anyhow::Error>(())
-    });
+    let h_webserver = run_module!(bus, module::web::WebServer::new(config.clone()));
 
     // Listen for signals
     let closer = bus.add_tx();
@@ -143,7 +124,14 @@ async fn main() -> Result<()> {
     let h_bus = tokio::task::spawn(async move { bus.start().await });
 
     // Wait for all tasks to finish
-    futures::try_join!(h_scraper, h_recorder, h_notifier, h_signal, h_bus, h_server)
-        .map(|_| ())
-        .map_err(|e| anyhow!("Task errored: {}", e))
+    futures::try_join!(
+        h_scraper,
+        h_recorder,
+        h_notifier,
+        h_signal,
+        h_bus,
+        h_webserver,
+    )
+    .map(|_| ())
+    .map_err(|e| anyhow!("Task errored: {}", e))
 }
