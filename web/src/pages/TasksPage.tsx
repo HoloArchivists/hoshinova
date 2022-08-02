@@ -3,12 +3,15 @@ import {
   AspectRatio,
   Badge,
   Card,
+  Container,
   Image,
   MediaQuery,
   Stack,
   Table,
   Text,
+  Title,
 } from '@mantine/core';
+import React from 'react';
 import {
   State,
   stateKey,
@@ -16,6 +19,8 @@ import {
   TaskWithStatus,
   useQueryTasks,
 } from '../api/tasks';
+
+const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
 const TaskStateBadge = ({ state }: { state: State }) => (
   <Badge
@@ -88,6 +93,22 @@ const TasksPage = () => {
           stateSort.indexOf(stateKey(a.status.state)) -
           stateSort.indexOf(stateKey(b.status.state))
       );
+
+  if (tasks.length < 1)
+    return (
+      <Container size="xs">
+        <AspectRatio ratio={1}>
+          <React.Suspense fallback={<div />}>
+            <SleepingPanda />
+          </React.Suspense>
+        </AspectRatio>
+        <Title>Crickets...</Title>
+        <Text>
+          There's nothing here yet. Maybe add some more channels to spice things
+          up!
+        </Text>
+      </Container>
+    );
 
   return (
     <>
