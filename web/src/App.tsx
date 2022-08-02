@@ -1,8 +1,8 @@
 import { Container, Loader, Tabs } from '@mantine/core';
 import React, { Suspense } from 'react';
-import ConfigPage from './pages/ConfigPage';
 
 const TasksPage = React.lazy(() => import('./pages/TasksPage'));
+const ConfigPage = React.lazy(() => import('./pages/ConfigPage'));
 
 const LoadingContainer = () => (
   <Container
