@@ -15,11 +15,12 @@ tokio = { version = "1.20.0", features = ["full"] }
 actix-web = "4"
 reqwest = { version = "0.11", features = ["gzip", "json"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }
+mime_guess = "2"
 
 # Utilities
 anyhow = "1.0"
 lazy_static = "1.4.0"
-const_format = { version = "0.2.26", features = ["const_generics"] }
+rust-embed = "6.4.0"
 
 # Serde
 humantime = "2.1.0"

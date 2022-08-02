@@ -3,7 +3,7 @@ use crate::{
     config::{Config, WebserverConfig},
     msgbus::BusTx,
 };
-use actix_web::{web::Data, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web::Data, App, HttpServer};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -13,6 +13,8 @@ use tokio::{
     select,
     sync::{mpsc, RwLock},
 };
+
+mod handler;
 
 pub struct WebServer {
     config: Arc<RwLock<Config>>,
@@ -25,38 +27,6 @@ pub struct TaskWithStatus {
 }
 
 type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
-
-const INDEX_PAGE: &str = const_format::str_replace!(
-    const_format::str_replace!(
-        include_str!("index.html"),
-        "/*** inject-script ***/",
-        include_str!("script.js"),
-    ),
-    "/*** inject-style ***/",
-    include_str!("pico.min.css"),
-);
-
-async fn index() -> actix_web::Result<impl Responder> {
-    Ok(HttpResponse::Ok()
-        .insert_header(("Content-Type", "text/html"))
-        .body(INDEX_PAGE))
-}
-
-async fn api_status(data: TaskMap) -> actix_web::Result<impl Responder> {
-    Ok(HttpResponse::Ok().json(
-        data.read()
-            .await
-            .iter()
-            .map(|(_, v)| v.to_owned())
-            .collect::<Vec<_>>(),
-    ))
-}
-
-/// Configure routes for the webserver
-fn configure(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.route("/", actix_web::web::get().to(index));
-    cfg.route("/api/status", actix_web::web::get().to(api_status));
-}
 
 impl WebServer {
     /// Return the webserver configuration
@@ -121,7 +91,7 @@ impl Module for WebServer {
                 .app_data(config.clone())
                 .app_data(tx.clone())
                 .app_data(tasks.clone())
-                .configure(configure)
+                .configure(handler::configure)
         })
         .disable_signals()
         .bind(ws_cfg.bind_address)

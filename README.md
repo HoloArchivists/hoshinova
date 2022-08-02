@@ -25,8 +25,13 @@ Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 # Clone the repository
 git clone https://github.com/HoloArchivists/hoshinova
 
-# Build and run
-cd hoshinova && cargo run
+# Build the web UI
+cd hoshinova/web
+yarn install && yarn build
+
+# Build and run hoshinova
+cd ..
+cargo run
 ```
 
 ### Get the docker image
