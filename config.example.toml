@@ -17,10 +17,10 @@ poll_interval = "30s"
 webhook_url = "https://discordapp.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"
 notify_on = ["waiting", "recording", "done", "failed"]
 
-# Coming soon, a web interface to view and manage tasks.
+# A web interface to view and manage tasks.
 # Optional, remove this section to disable.
 [webserver]
-bind_address = "127.0.0.1:1104"
+bind_address = "0.0.0.0:1104"
 
 [[channel]]
 id = "UCP0BspO_AMEe3aQqqpo89Dg"

@@ -1,17 +1,17 @@
 use crate::module::TaskStatus;
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
-    pub notifier: NotifierConfig,
+    pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
     pub channel: Vec<ChannelConfig>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct YtarchiveConfig {
     pub executable_path: String,
     pub working_directory: String,
@@ -19,34 +19,34 @@ pub struct YtarchiveConfig {
     pub quality: String,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ScraperConfig {
     pub rss: ScraperRSSConfig,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ScraperRSSConfig {
     #[serde(with = "humantime_serde")]
     pub poll_interval: std::time::Duration,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct NotifierConfig {
     pub discord: Option<NotifierDiscordConfig>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct NotifierDiscordConfig {
     pub webhook_url: String,
     pub notify_on: Vec<TaskStatus>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WebserverConfig {
     pub bind_address: String,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ChannelConfig {
     pub id: String,
     pub name: String,

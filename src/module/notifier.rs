@@ -60,74 +60,73 @@ impl Module for Discord {
     async fn run(&self, _tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
         // Listen for messages
         while let Some(message) = rx.recv().await {
-            match message {
-                Message::ToNotify(notification) => {
-                    let Notification { task, status } = notification;
+            // Wait for notifications
+            let Notification { task, status } = match message {
+                Message::ToNotify(notification) => notification,
+                _ => continue,
+            };
 
-                    // Get configuration
-                    let cfg: &Config = &*self.config.read().await;
-                    let cfg = match &cfg.notifier.discord {
-                        Some(discord) => discord,
-                        None => {
-                            debug!("No Discord webhook configured");
-                            continue;
-                        }
-                    };
+            // Get configuration
+            let cfg: &Config = &*self.config.read().await;
+            let cfg = match (|| cfg.clone().notifier?.discord)() {
+                Some(cfg) => cfg,
+                None => continue,
+            };
 
-                    // Check if we should notify
-                    if !cfg.notify_on.contains(&status) {
-                        debug!("Not notifying on status {:?}", status);
-                        continue;
-                    }
+            // Check if we should notify
+            if !cfg.notify_on.contains(&status) {
+                debug!("Not notifying on status {:?}", status);
+                continue;
+            }
 
-                    let (title, color) = match status {
-                        TaskStatus::Waiting => ("Waiting for Live", 0xebd045),
-                        TaskStatus::Recording => ("Recording", 0x58b9ff),
-                        TaskStatus::Done => ("Done", 0x45eb45),
-                        TaskStatus::Failed => ("Failed", 0xeb4545),
-                    };
-                    let timestamp = chrono::Utc::now().to_rfc3339();
+            let (title, color) = match status {
+                TaskStatus::Waiting => ("Waiting for Live", 0xebd045),
+                TaskStatus::Recording => ("Recording", 0x58b9ff),
+                TaskStatus::Done => ("Done", 0x45eb45),
+                TaskStatus::Failed => ("Failed", 0xeb4545),
+            };
+            let timestamp = chrono::Utc::now().to_rfc3339();
 
-                    // Construct the payload
-                    let message = WebhookMessage {
-                        content: "".into(),
-                        embeds: vec![DiscordEmbed {
-                            title: title.into(),
-                            description: format!(
-                                "[{}](https://youtu.be/{})",
-                                task.title, task.video_id,
-                            ),
-                            color,
-                            author: DiscordEmbedAuthor {
-                                name: task.channel_name,
-                                url: format!("https://www.youtube.com/channel/{}", task.channel_id),
-                                icon_url: task.channel_picture,
-                            },
-                            footer: DiscordEmbedFooter {
-                                text: APP_NAME.into(),
-                            },
-                            timestamp: timestamp,
-                            thumbnail: DiscordEmbedThumbnail {
-                                url: task.video_picture,
-                            },
-                        }],
-                    };
+            // Construct the payload
+            let message = WebhookMessage {
+                content: "".into(),
+                embeds: vec![DiscordEmbed {
+                    title: title.into(),
+                    description: format!("[{}](https://youtu.be/{})", task.title, task.video_id),
+                    color,
+                    author: DiscordEmbedAuthor {
+                        name: task.channel_name,
+                        url: format!("https://www.youtube.com/channel/{}", task.channel_id),
+                        icon_url: task.channel_picture,
+                    },
+                    footer: DiscordEmbedFooter {
+                        text: APP_NAME.into(),
+                    },
+                    timestamp: timestamp,
+                    thumbnail: DiscordEmbedThumbnail {
+                        url: task.video_picture,
+                    },
+                }],
+            };
 
-                    // Send the webhook
-                    let res = self
-                        .client
-                        .post(&cfg.webhook_url)
-                        .header("Content-Type", "application/json")
-                        .json(&message)
-                        .send()
-                        .await;
+            // Send the webhook
+            let res = self
+                .client
+                .post(&cfg.webhook_url)
+                .header("Content-Type", "application/json")
+                .json(&message)
+                .send()
+                .await;
 
-                    match res {
-                        Ok(_) => info!("Sent Discord webhook"),
-                        Err(e) => warn!("Failed to send Discord webhook: {}", e),
+            match res {
+                Ok(res) => {
+                    if res.status().is_success() {
+                        info!("Sent Discord webhook");
+                    } else {
+                        error!("Failed to send Discord webhook: {}", res.status());
                     }
                 }
-                _ => (),
+                Err(e) => error!("Failed to send Discord webhook: {}", e),
             }
         }
 

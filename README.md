@@ -6,23 +6,51 @@
 **⚠️ Unstable Software**: This program is under heavy development. It works, but
 will still undergo a lot of breaking changes. Upgrade with caution.
 
+![Screenshot of Web UI](.github/screenshot.png)
+
 ## Install
+
+You can get hoshinova using either one of the following methods.
+
+### Get the latest release
+
+You can download the latest binaries
+[from the releases page](https://github.com/HoloArchivists/hoshinova/releases).
 
 Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 [ffmpeg](https://ffmpeg.org/) installed and executable in your PATH
 ([guide](https://github.com/HoloArchivists/hollow_memories)).
 
-You can
-[download the latest release](https://github.com/HoloArchivists/hoshinova/releases),
-or build it yourself. You'll need to have [Rust](https://www.rust-lang.org/)
-installed.
+### Run from source
 
 ```bash
 # Clone the repository
 git clone https://github.com/HoloArchivists/hoshinova
 
-# Build and run
-cd hoshinova && cargo run --release
+# Build the web UI
+cd hoshinova/web
+yarn install && yarn build
+
+# Build and run hoshinova
+cd ..
+cargo run
+```
+
+### Get the docker image
+
+```
+docker pull ghcr.io/holoarchivists/hoshinova
+```
+
+Run with Docker:
+
+```
+docker run -d \
+  -p 1104:1104 \
+  -v $(pwd)/config.toml:/app/config.toml:ro \
+  -v $(pwd)/videos:/app/videos \
+  -v $(pwd)/temp:/app/temp
+  ghcr.io/holoarchivists/hoshinova
 ```
 
 ## Configure
@@ -88,6 +116,23 @@ about. Right now there are only 4 events:
 | `recording` | The stream has just started and is being recorded          |
 | `done`      | The stream is over                                         |
 | `failed`    | Something went wrong while recording the stream            |
+
+### webserver
+
+A webserver is available for you to view and monitor your tasks. If you don't
+want this, you can remove this section.
+
+```toml
+[webserver]
+bind_address = "0.0.0.0:1104"
+```
+
+`bind_address` is the address the webserver will listen to. Setting the address
+to `0.0.0.0:1104` will let anyone access the web interface. If you only want to
+access it from the computer you're running `hoshinova` from, set the address to
+`127.0.0.1:1104`.
+
+Feel free to adjust the port `:1104` to any number up to `65535`.
 
 ### channel configuration
 
