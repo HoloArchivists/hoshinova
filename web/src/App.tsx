@@ -1,20 +1,9 @@
-import { Container, Loader, Tabs } from '@mantine/core';
+import { Tabs } from '@mantine/core';
 import React, { Suspense } from 'react';
+import { SuspenseLoader } from './shared/SuspenseLoader';
 
 const TasksPage = React.lazy(() => import('./pages/TasksPage'));
 const ConfigPage = React.lazy(() => import('./pages/ConfigPage'));
-
-const LoadingContainer = () => (
-  <Container
-    p="xl"
-    sx={() => ({
-      display: 'flex',
-      justifyContent: 'center',
-    })}
-  >
-    <Loader />
-  </Container>
-);
 
 function App() {
   return (
@@ -26,12 +15,12 @@ function App() {
         </Tabs.List>
 
         <Tabs.Panel value="tasks">
-          <Suspense fallback={<LoadingContainer />}>
+          <Suspense fallback={<SuspenseLoader />}>
             <TasksPage />
           </Suspense>
         </Tabs.Panel>
         <Tabs.Panel value="config">
-          <Suspense fallback={<LoadingContainer />}>
+          <Suspense fallback={<SuspenseLoader />}>
             <ConfigPage />
           </Suspense>
         </Tabs.Panel>

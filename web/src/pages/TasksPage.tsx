@@ -19,6 +19,7 @@ import {
   TaskWithStatus,
   useQueryTasks,
 } from '../api/tasks';
+import { SuspenseLoader } from '../shared/SuspenseLoader';
 
 const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
@@ -93,6 +94,8 @@ const TasksPage = () => {
           stateSort.indexOf(stateKey(a.status.state)) -
           stateSort.indexOf(stateKey(b.status.state))
       );
+
+  if (qTasks.isLoading && !qTasks.data) return <SuspenseLoader />;
 
   if (tasks.length < 1)
     return (
