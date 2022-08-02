@@ -39,7 +39,7 @@ cargo run
 ### Get the docker image
 
 ```
-docker pull ghcr.io/holoarchivists/hoshinova
+docker pull ghcr.io/holoarchivists/hoshinova:main
 ```
 
 Run with Docker:
@@ -50,7 +50,23 @@ docker run -d \
   -v $(pwd)/config.toml:/app/config.toml:ro \
   -v $(pwd)/videos:/app/videos \
   -v $(pwd)/temp:/app/temp
-  ghcr.io/holoarchivists/hoshinova
+  ghcr.io/holoarchivists/hoshinova:main
+```
+
+Or with `docker-compose`:
+
+```yaml
+version: '3'
+services:
+  hoshinova:
+    image: ghcr.io/holoarchivists/hoshinova:main
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:1104:1104
+    volumes:
+      - ./config.toml:/app/config.toml
+      - ./temp/:/app/temp
+      - ./videos:/app/videos
 ```
 
 ## Configure
@@ -133,6 +149,9 @@ access it from the computer you're running `hoshinova` from, set the address to
 `127.0.0.1:1104`.
 
 Feel free to adjust the port `:1104` to any number up to `65535`.
+
+Note that if you're running in Docker, you most likely want to set the bind
+address to `0.0.0.0`.
 
 ### channel configuration
 
