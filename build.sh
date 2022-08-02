@@ -9,6 +9,12 @@ set -e
 # See: https://github.com/cross-rs/cross/issues/724
 #
 
+# Pre-build: build the web UI
+pushd web
+  yarn install
+  yarn build
+popd
+
 # Install cross
 cargo install cross --git https://github.com/cross-rs/cross
 

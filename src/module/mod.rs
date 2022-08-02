@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, RwLock};
 pub mod notifier;
 pub mod recorder;
 pub mod scraper;
+pub mod web;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -17,7 +18,7 @@ pub enum Message {
     RecordingStatus(RecordingStatus),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Task {
     pub title: String,
     pub video_id: String,

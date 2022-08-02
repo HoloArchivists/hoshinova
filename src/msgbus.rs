@@ -44,10 +44,13 @@ impl<T: Debug + Clone + Sync> MessageBus<T> {
     /// Starts the message bus. This will continue running until the bus is
     /// closed.
     pub async fn start(&mut self) {
-        while let Some(BusMessage::Message(msg)) = self.mix_rx.recv().await {
+        'out: while let Some(BusMessage::Message(msg)) = self.mix_rx.recv().await {
             for tx in &mut self.mix_tx {
                 match tx.try_send(msg.clone()) {
-                    Err(e) => error!("Failed to send message: {}", e),
+                    Err(e) => {
+                        error!("Failed to send message: {}", e);
+                        break 'out;
+                    }
                     _ => (),
                 }
             }

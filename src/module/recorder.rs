@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::Serialize;
 use std::{
     fs,
     path::Path,
@@ -189,48 +190,50 @@ impl YTArchive {
             }
 
             // Check if status changed
-            if old.state != status.state {
-                let message = match status.state {
-                    YTAState::Waiting(_) => {
-                        info!("{} Waiting for stream to go live", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Waiting,
-                        }))
-                    }
-                    YTAState::Recording => {
-                        info!("{} Recording started", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Recording,
-                        }))
-                    }
-                    YTAState::Finished => {
-                        info!("{} Recording finished", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Done,
-                        }))
-                    }
-                    YTAState::AlreadyProcessed => {
-                        info!("{} Video already processed, skipping", task_name);
-                        None
-                    }
-                    YTAState::Interrupted => {
-                        info!("{} Recording failed: interrupted", task_name);
-                        Some(Message::ToNotify(Notification {
-                            task: task.clone(),
-                            status: TaskStatus::Failed,
-                        }))
-                    }
-                    _ => None,
-                };
+            if old.state == status.state {
+                continue;
+            }
 
-                if let Some(message) = message {
-                    // Exit the loop if message failed to send
-                    if let Err(_) = bus.send(message).await {
-                        break;
-                    }
+            let message = match status.state {
+                YTAState::Waiting(_) => {
+                    info!("{} Waiting for stream to go live", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Waiting,
+                    }))
+                }
+                YTAState::Recording => {
+                    info!("{} Recording started", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Recording,
+                    }))
+                }
+                YTAState::Finished => {
+                    info!("{} Recording finished", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Done,
+                    }))
+                }
+                YTAState::AlreadyProcessed => {
+                    info!("{} Video already processed, skipping", task_name);
+                    None
+                }
+                YTAState::Interrupted => {
+                    info!("{} Recording failed: interrupted", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: TaskStatus::Failed,
+                    }))
+                }
+                _ => None,
+            };
+
+            if let Some(message) = message {
+                // Exit the loop if message failed to send
+                if let Err(_) = bus.send(message).await {
+                    break;
                 }
             }
         }
@@ -243,6 +246,7 @@ impl YTArchive {
         trace!("{} Stdout monitor quit: {:?}", task_name, r_stdout);
         trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
+        // Skip moving files if it didn't finish
         if status.state != YTAState::Finished {
             return Ok(());
         }
@@ -258,29 +262,26 @@ impl YTArchive {
         let destpath = Path::new(&task.output_directory).join(filename);
 
         // Try to rename the file into the output directory
-        match fs::rename(frompath, &destpath) {
-            Ok(()) => {
-                info!("{} Moved output file to {}", task_name, destpath.display(),);
-                Ok(())
-            }
-            Err(_) => {
-                debug!(
-                    "{} Failed to rename file to output, trying to copy",
-                    task_name,
-                );
+        if let Err(_) = fs::rename(frompath, &destpath) {
+            debug!(
+                "{} Failed to rename file to output, trying to copy",
+                task_name,
+            );
 
-                // Copy the file into the output directory
-                fs::copy(frompath, &destpath)
-                    .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
-                info!(
-                    "{} Copied output file to {}, removing original",
-                    task_name,
-                    destpath.display(),
-                );
-                fs::remove_file(frompath)
-                    .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))
-            }
+            // Copy the file into the output directory
+            fs::copy(frompath, &destpath)
+                .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
+            info!(
+                "{} Copied output file to {}, removing original",
+                task_name,
+                destpath.display(),
+            );
+            fs::remove_file(frompath)
+                .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))?;
         }
+
+        info!("{} Moved output file to {}", task_name, destpath.display());
+        Ok(())
     }
 }
 
@@ -315,11 +316,12 @@ impl Module for YTArchive {
 }
 
 /// The current state of ytarchive.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct YTAStatus {
     version: Option<String>,
     state: YTAState,
     last_output: Option<String>,
+    last_update: chrono::DateTime<chrono::Utc>,
     video_fragments: Option<u32>,
     audio_fragments: Option<u32>,
     total_size: Option<String>,
@@ -327,7 +329,7 @@ pub struct YTAStatus {
     output_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum YTAState {
     Idle,
     Waiting(Option<DateTime<Utc>>),
@@ -343,11 +345,15 @@ fn strip_ansi(s: &str) -> String {
         static ref RE: Regex = Regex::new(concat!(
             r"[\u001B\u009B][[\\]()#;?]*",
             r"(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|",
-            r"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+            r"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))",
         ))
         .expect("Failed to compile ANSI stripping regex");
     }
-    RE.replace_all(s, "").to_string()
+    let stripped = RE.replace_all(s, "").to_string();
+    stripped
+        .strip_suffix("\u{001b}[K")
+        .unwrap_or(&stripped)
+        .to_string()
 }
 
 impl YTAStatus {
@@ -356,6 +362,7 @@ impl YTAStatus {
             version: None,
             state: YTAState::Idle,
             last_output: None,
+            last_update: chrono::Utc::now(),
             video_fragments: None,
             audio_fragments: None,
             total_size: None,
@@ -378,15 +385,16 @@ impl YTAStatus {
     ///   Final file: /path/to/output.mp4
     pub fn parse_line(&mut self, line: &str) {
         self.last_output = Some(line.to_string());
+        self.last_update = chrono::Utc::now();
 
         if line.starts_with("Video Fragments: ") {
             self.state = YTAState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
-                self.video_fragments = x.parse().ok();
+                self.video_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.audio_fragments = x.parse().ok();
+                self.audio_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
                 self.total_size = Some(strip_ansi(x));
