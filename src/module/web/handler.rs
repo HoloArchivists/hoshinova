@@ -1,5 +1,12 @@
 use super::TaskMap;
-use actix_web::{get, web, HttpResponse, Responder};
+use crate::config::Config;
+use actix_web::{
+    get,
+    web::{self, Data},
+    HttpResponse, Responder,
+};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "web/dist"]
@@ -7,13 +14,14 @@ struct StaticFiles;
 
 /// Configure routes for the webserver
 pub fn configure(cfg: &mut actix_web::web::ServiceConfig) {
-    cfg.service(api_tasks);
-    cfg.service(api_version);
+    cfg.service(get_tasks);
+    cfg.service(get_version);
+    cfg.service(get_config);
     cfg.service(serve_static);
 }
 
 #[get("/api/tasks")]
-async fn api_tasks(data: TaskMap) -> actix_web::Result<impl Responder> {
+async fn get_tasks(data: TaskMap) -> actix_web::Result<impl Responder> {
     Ok(HttpResponse::Ok().json(
         data.read()
             .await
@@ -24,8 +32,13 @@ async fn api_tasks(data: TaskMap) -> actix_web::Result<impl Responder> {
 }
 
 #[get("/api/version")]
-async fn api_version() -> actix_web::Result<impl Responder> {
+async fn get_version() -> actix_web::Result<impl Responder> {
     Ok(HttpResponse::Ok().body(crate::APP_NAME.to_owned()))
+}
+
+#[get("/api/config")]
+async fn get_config(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<impl Responder> {
+    Ok(HttpResponse::Ok().json(config.read().await.to_owned()))
 }
 
 #[get("/{_:.*}")]
