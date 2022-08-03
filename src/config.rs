@@ -1,5 +1,5 @@
 use crate::module::TaskStatus;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -60,8 +60,8 @@ pub struct ChannelConfig {
     pub picture_url: Option<String>,
 }
 
-pub fn load_config(path: &str) -> Result<Config> {
-    let config = std::fs::read_to_string(path)?;
+pub async fn load_config(path: &str) -> Result<Config> {
+    let config = tokio::fs::read_to_string(path).await?;
     let mut config: Config = toml::from_str(&config)?;
     config.config_path = path.to_string();
     Ok(config)
@@ -69,10 +69,36 @@ pub fn load_config(path: &str) -> Result<Config> {
 
 impl Config {
     /// Reads the config file and replaces the current config with the new one.
-    pub fn reload(&mut self) -> Result<()> {
+    pub async fn reload(&mut self) -> Result<()> {
         info!("Reloading config");
-        let config = load_config(&self.config_path)?;
+        let config = load_config(&self.config_path).await?;
         *self = config;
         Ok(())
+    }
+
+    /// Reads and returns the source TOML file from the config path. There are
+    /// no guarantees that the returned TOML corresponds to the current config,
+    /// as it might have been changed since the last time it was read.
+    pub async fn get_source_toml(&self) -> Result<String> {
+        tokio::fs::read_to_string(&self.config_path)
+            .await
+            .map_err(|e| e.into())
+    }
+
+    /// Writes the provided TOML string to the config path, and reloads the
+    /// config.
+    pub async fn set_source_toml(&mut self, source_toml: &str) -> Result<()> {
+        // Try to deserialize the provided TOML string. If it fails, we don't
+        // want to write it to the config file.
+        let _: Config = toml::from_str(source_toml)
+            .map_err(|e| anyhow!("Failed to deserialize provided TOML: {}", e))?;
+
+        // Write the provided TOML string to the config file.
+        tokio::fs::write(&self.config_path, source_toml)
+            .await
+            .map_err(|e| anyhow!("Failed to write to config file: {}", e))?;
+
+        // Reload the config.
+        self.reload().await
     }
 }

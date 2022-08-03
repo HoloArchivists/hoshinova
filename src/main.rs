@@ -76,6 +76,7 @@ async fn main() -> Result<()> {
 
     // Load configuration file
     let config = config::load_config(&args.config)
+        .await
         .map_err(|e| anyhow!("Failed to read config file: {}", e))?;
     debug!("{:?}", config);
 

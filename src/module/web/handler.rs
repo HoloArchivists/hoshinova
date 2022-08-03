@@ -1,7 +1,7 @@
 use super::TaskMap;
 use crate::config::Config;
 use actix_web::{
-    get, post,
+    get, post, put,
     web::{self, Data},
     HttpResponse, Responder,
 };
@@ -17,6 +17,8 @@ pub fn configure(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(get_tasks);
     cfg.service(get_version);
     cfg.service(get_config);
+    cfg.service(get_config_toml);
+    cfg.service(put_config_toml);
     cfg.service(reload_config);
     cfg.service(serve_static);
 }
@@ -48,7 +50,35 @@ async fn reload_config(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<i
         .write()
         .await
         .reload()
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    Ok(HttpResponse::Ok().json("ok"))
+}
+
+#[get("/api/config/toml")]
+async fn get_config_toml(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<impl Responder> {
+    Ok(HttpResponse::Ok().body(
+        config
+            .read()
+            .await
+            .get_source_toml()
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?,
+    ))
+}
+
+#[put("/api/config/toml")]
+async fn put_config_toml(
+    config: Data<Arc<RwLock<Config>>>,
+    body: web::Bytes,
+) -> actix_web::Result<impl Responder> {
+    let body = std::str::from_utf8(&body).map_err(|e| actix_web::error::ErrorBadRequest(e))?;
+    config
+        .write()
+        .await
+        .set_source_toml(body)
+        .await
+        .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
     Ok(HttpResponse::Ok().json("ok"))
 }
 
