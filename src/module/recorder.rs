@@ -301,7 +301,7 @@ impl Module for YTArchive {
                 Message::ToRecord(task) => {
                     debug!("Spawning thread for task: {:?}", task);
                     let mut tx = tx.clone();
-                    let cfg = &*self.config.read().await;
+                    let cfg = self.config.read().await;
                     let cfg = cfg.clone();
                     tokio::spawn(async move {
                         if let Err(e) = YTArchive::record(cfg, task, &mut tx).await {

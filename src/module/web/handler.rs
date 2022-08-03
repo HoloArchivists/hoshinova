@@ -1,7 +1,7 @@
 use super::TaskMap;
 use crate::config::Config;
 use actix_web::{
-    get,
+    get, post,
     web::{self, Data},
     HttpResponse, Responder,
 };
@@ -17,6 +17,7 @@ pub fn configure(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(get_tasks);
     cfg.service(get_version);
     cfg.service(get_config);
+    cfg.service(reload_config);
     cfg.service(serve_static);
 }
 
@@ -39,6 +40,16 @@ async fn get_version() -> actix_web::Result<impl Responder> {
 #[get("/api/config")]
 async fn get_config(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<impl Responder> {
     Ok(HttpResponse::Ok().json(config.read().await.to_owned()))
+}
+
+#[post("/api/config/reload")]
+async fn reload_config(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<impl Responder> {
+    config
+        .write()
+        .await
+        .reload()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    Ok(HttpResponse::Ok().json("ok"))
 }
 
 #[get("/{_:.*}")]

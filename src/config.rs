@@ -9,6 +9,9 @@ pub struct Config {
     pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
     pub channel: Vec<ChannelConfig>,
+
+    #[serde(skip)]
+    config_path: String,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -59,6 +62,17 @@ pub struct ChannelConfig {
 
 pub fn load_config(path: &str) -> Result<Config> {
     let config = std::fs::read_to_string(path)?;
-    let config: Config = toml::from_str(&config)?;
+    let mut config: Config = toml::from_str(&config)?;
+    config.config_path = path.to_string();
     Ok(config)
+}
+
+impl Config {
+    /// Reads the config file and replaces the current config with the new one.
+    pub fn reload(&mut self) -> Result<()> {
+        info!("Reloading config");
+        let config = load_config(&self.config_path)?;
+        *self = config;
+        Ok(())
+    }
 }

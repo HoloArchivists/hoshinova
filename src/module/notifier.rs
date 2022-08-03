@@ -67,10 +67,13 @@ impl Module for Discord {
             };
 
             // Get configuration
-            let cfg: &Config = &*self.config.read().await;
-            let cfg = match (|| cfg.clone().notifier?.discord)() {
-                Some(cfg) => cfg,
-                None => continue,
+            let cfg = {
+                let cfg = self.config.read().await;
+                let not = cfg.notifier.clone();
+                match (|| not?.discord)() {
+                    Some(cfg) => cfg,
+                    None => continue,
+                }
             };
 
             // Check if we should notify

@@ -100,7 +100,7 @@ impl RSS {
         &self,
         scraped: Arc<Mutex<HashSet<String>>>,
     ) -> impl Stream<Item = Task> + '_ {
-        let config = &*self.config.read().await;
+        let config = self.config.read().await;
         stream::iter(config.channel.clone())
             .map(move |channel| self.run_one(scraped.clone(), channel))
             .buffer_unordered(4)
@@ -181,9 +181,13 @@ impl Module for RSS {
                 return Ok(());
             }
 
+            // Determine when to wake up
+            let wakeup = {
+                let cfg = self.config.read().await;
+                std::time::Instant::now() + cfg.scraper.rss.poll_interval
+            };
+
             // Sleep
-            let cfg = &*self.config.read().await;
-            let wakeup = std::time::Instant::now() + cfg.scraper.rss.poll_interval;
             while std::time::Instant::now() < wakeup {
                 match rx.try_recv() {
                     Ok(_) => continue,

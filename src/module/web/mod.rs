@@ -31,8 +31,8 @@ type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
 impl WebServer {
     /// Return the webserver configuration
     async fn get_wsconfig(&self) -> Option<WebserverConfig> {
-        let config = &*self.config.read().await;
-        config.webserver.to_owned()
+        let config = self.config.read().await;
+        config.webserver.clone()
     }
 
     async fn bus_listen_loop(
