@@ -49,7 +49,7 @@ docker run -d \
   -p 1104:1104 \
   -v $(pwd)/config.toml:/app/config.toml:ro \
   -v $(pwd)/videos:/app/videos \
-  -v $(pwd)/temp:/app/temp
+  -v $(pwd)/temp:/app/temp \
   ghcr.io/holoarchivists/hoshinova:main
 ```
 
