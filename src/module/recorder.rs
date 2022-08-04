@@ -23,6 +23,40 @@ use tokio::{
 };
 use ts_rs::TS;
 
+#[async_trait]
+impl Module for Json {
+    fn new(config: Arc<RwLock<Config>>) -> Self {
+        Self { config: config }
+    }
+
+    async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
+        // Listen for new messages
+        while let Some(message) = rx.recv().await {
+            match message {
+                Message::ToRecord(task) => {
+                    debug!("Spawning thread for task: {:?}", task);
+                    let mut tx = tx.clone();
+                    let cfg = &*self.config.read().await;
+                    let cfg = cfg.clone();
+                    let client = Client::builder()
+                        .user_agent(APP_USER_AGENT)
+                        .build()
+                        .expect("Failed to create client");
+                    tokio::spawn(async move {
+                        if let Err(e) = Json::get(client, cfg, task, &mut tx).await {
+                            error!("Failed to get json for task: {:?}", e);
+                        };
+                    });
+                }
+                _ => (),
+            }
+        }
+
+        debug!("JSON module finished");
+        Ok(())
+    }
+}
+
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
     active_ids: Arc<RwLock<HashSet<String>>>,
