@@ -137,13 +137,35 @@ impl Json {
                 info!("{} Stream is copyrighted", task_name);
                 Some(Message::ToNotify(Notification {
                     task: task.clone(),
-                    status: Status::playability(PlayabilityStatus::Copyrighted),
+                    status: Status::Playability(PlayabilityStatus::Copyrighted),
                 }));
-                PlayabilityStatus::Copyrighted},
-            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => PlayabilityStatus::Privated,
-            html if html.contains(r#"status":"ERROR"#) => PlayabilityStatus::Removed,
+                PlayabilityStatus::Copyrighted
+            }
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => {
+                info!("{} Stream is copyrighted", task_name);
+                Some(Message::ToNotify(Notification {
+                    task: task.clone(),
+                    status: Status::Playability(PlayabilityStatus::Copyrighted),
+                }));
+                PlayabilityStatus::Privated
+            }
+            html if html.contains(r#"status":"ERROR"#) => {
+                info!("{} Stream is copyrighted", task_name);
+                Some(Message::ToNotify(Notification {
+                    task: task.clone(),
+                    status: Status::Playability(PlayabilityStatus::Copyrighted),
+                }));
+                PlayabilityStatus::Removed
+            }
             html if html.contains(r#"status":"OK"#) => match html {
-                html if html.contains("\"isUnlisted\":true") => PlayabilityStatus::Unlisted,
+                html if html.contains("\"isUnlisted\":true") => {
+                    info!("{} Stream is copyrighted", task_name);
+                    Some(Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Copyrighted),
+                    }));
+                    PlayabilityStatus::Unlisted
+                }
                 html if html.contains("hlsManifestUrl") => PlayabilityStatus::OnLive,
                 _ => PlayabilityStatus::Ok,
             },
