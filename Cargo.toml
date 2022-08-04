@@ -20,6 +20,7 @@ mime_guess = "2"
 anyhow = "1.0"
 lazy_static = "1.4.0"
 rust-embed = "6.4.0"
+ts-rs = { version = "6.1", features = ["chrono-impl"] }
 
 # Serde
 humantime = "2.1.0"

@@ -41,8 +41,12 @@ Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 # Clone the repository
 git clone https://github.com/HoloArchivists/hoshinova
 
+# Generate TypeScript bindings
+cd hoshinova
+cargo test
+
 # Build the web UI
-cd hoshinova/web
+cd web
 yarn install && yarn build
 
 # Build and run hoshinova

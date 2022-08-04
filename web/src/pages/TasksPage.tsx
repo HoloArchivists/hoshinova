@@ -2,28 +2,32 @@ import {
   Anchor,
   AspectRatio,
   Badge,
+  Button,
   Card,
   Container,
+  Group,
   Image,
   MediaQuery,
+  Select,
+  SimpleGrid,
   Stack,
   Table,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
 import React from 'react';
-import {
-  State,
-  stateKey,
-  stateString,
-  TaskWithStatus,
-  useQueryTasks,
-} from '../api/tasks';
+import { stateString, useQueryTasks } from '../api/tasks';
+import { TaskWithStatus } from '../bindings/TaskWithStatus';
 import { SuspenseLoader } from '../shared/SuspenseLoader';
+import { IconPlus } from '@tabler/icons';
+import { closeAllModals, openModal } from '@mantine/modals';
+import { useQueryConfig } from '../api/config';
+import { YTAState } from '../bindings/YTAState';
 
 const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
-const TaskStateBadge = ({ state }: { state: State }) => (
+const TaskStateBadge = ({ state }: { state: YTAState }) => (
   <Badge
     color={
       state === 'Recording'
@@ -74,29 +78,70 @@ const rowElements = ({ task, status }: TaskWithStatus) => [
   </>,
 ];
 
+const AddVideoModal = () => {
+  const qConfig = useQueryConfig();
+
+  const [videoURL, setVideoURL] = React.useState('');
+  const [destPaths, setDestPaths] = React.useState<
+    { value: string; label: string }[]
+  >([]);
+
+  React.useEffect(() => {
+    if (!qConfig.data) return;
+    const outPaths = new Set(qConfig.data.channel.map((ch) => ch.outpath));
+    if (outPaths.size > destPaths.length) {
+      setDestPaths(
+        Array.from(outPaths).map((path) => ({ value: path, label: path }))
+      );
+    }
+  }, [qConfig, destPaths]);
+
+  const addVideo = () => {
+    alert('Work in progress!');
+    closeAllModals();
+  };
+
+  return (
+    <Stack spacing="md">
+      <TextInput
+        label="Video URL"
+        placeholder="https://www.youtube.com/watch?v=..."
+        data-autofocus
+        value={videoURL}
+        onChange={(e) => setVideoURL(e.target.value)}
+      />
+      <Select
+        label="Destination Path"
+        data={destPaths}
+        placeholder="Select a destination path"
+        searchable
+        creatable
+        getCreateLabel={(input) => 'Use ' + input}
+        onCreate={(input) => {
+          const item = { value: input, label: input };
+          setDestPaths((now) => [...now, item]);
+          return item;
+        }}
+      />
+      <Button fullWidth onClick={addVideo}>
+        [WIP] Add
+      </Button>
+    </Stack>
+  );
+};
+
 const TasksPage = () => {
   const qTasks = useQueryTasks();
+  const tasks = qTasks.data || [];
 
-  const stateSort = [
-    'Recording',
-    'Muxing',
-    'Waiting',
-    'Finished',
-    'Idle',
-    'Ended',
-    'AlreadyProcessed',
-    'Interrupted',
-  ];
-  const tasks = !qTasks.data
-    ? []
-    : qTasks.data.sort(
-        (a, b) =>
-          stateSort.indexOf(stateKey(a.status.state)) -
-          stateSort.indexOf(stateKey(b.status.state))
-      );
+  const handleAddVideo = () => {
+    openModal({
+      title: 'Add Video',
+      children: <AddVideoModal />,
+    });
+  };
 
   if (qTasks.isLoading && !qTasks.data) return <SuspenseLoader />;
-
   if (tasks.length < 1)
     return (
       <Container size="xs">
@@ -114,8 +159,13 @@ const TasksPage = () => {
     );
 
   return (
-    <>
-      <MediaQuery smallerThan="xs" styles={{ display: 'none' }}>
+    <Stack p="md">
+      <Group>
+        <Button leftIcon={<IconPlus size={18} />} onClick={handleAddVideo}>
+          Add video
+        </Button>
+      </Group>
+      <MediaQuery smallerThan="md" styles={{ display: 'none' }}>
         <Table>
           <thead>
             <tr>
@@ -136,8 +186,16 @@ const TasksPage = () => {
           </tbody>
         </Table>
       </MediaQuery>
-      <MediaQuery largerThan="xs" styles={{ display: 'none' }}>
-        <Stack spacing="md">
+      <MediaQuery largerThan="md" styles={{ display: 'none' }}>
+        <SimpleGrid
+          spacing="md"
+          cols={2}
+          breakpoints={[
+            { maxWidth: 'md', cols: 3, spacing: 'md' },
+            { maxWidth: 'sm', cols: 2, spacing: 'sm' },
+            { maxWidth: 'xs', cols: 1, spacing: 'sm' },
+          ]}
+        >
           {tasks.map(({ task, status }) => {
             const [_, title, state, progres] = rowElements({ task, status });
             return (
@@ -158,9 +216,9 @@ const TasksPage = () => {
               </Card>
             );
           })}
-        </Stack>
+        </SimpleGrid>
       </MediaQuery>
-    </>
+    </Stack>
   );
 };
 

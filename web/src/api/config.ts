@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Config } from '../bindings/Config';
 
 const rejectError = (res: Response) =>
   res.status >= 200 && res.status < 300
@@ -10,6 +11,7 @@ export const useQueryConfig = () =>
     fetch('/api/config')
       .then(rejectError)
       .then((res) => res.json())
+      .then((res) => res as Config)
   );
 
 export const useMutateReloadConfig = () => {

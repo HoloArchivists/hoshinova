@@ -15,6 +15,7 @@ struct StaticFiles;
 /// Configure routes for the webserver
 pub fn configure(cfg: &mut actix_web::web::ServiceConfig) {
     cfg.service(get_tasks);
+    cfg.service(post_task);
     cfg.service(get_version);
     cfg.service(get_config);
     cfg.service(get_config_toml);
@@ -32,6 +33,11 @@ async fn get_tasks(data: TaskMap) -> actix_web::Result<impl Responder> {
             .map(|(_, v)| v.to_owned())
             .collect::<Vec<_>>(),
     ))
+}
+
+#[post("/api/task")]
+async fn post_task() -> actix_web::Result<impl Responder> {
+    Ok(HttpResponse::Ok().json(""))
 }
 
 #[get("/api/version")]

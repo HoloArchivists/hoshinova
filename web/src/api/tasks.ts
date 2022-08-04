@@ -1,58 +1,41 @@
 import { useQuery } from '@tanstack/react-query';
+import { YTAState } from '../bindings/YTAState';
+import { TaskWithStatus } from '../bindings/TaskWithStatus';
 
-export type TaskWithStatus = {
-  task: Task;
-  status: Status;
-};
-
-export type Task = {
-  title: string;
-  video_id: string;
-  video_picture: string;
-  channel_name: string;
-  channel_id: string;
-  channel_picture: string;
-  output_directory: string;
-};
-
-export type Status = {
-  version: string;
-  state: State;
-  last_output: string;
-  last_update: string;
-  video_fragments: number | null;
-  audio_fragments: number | null;
-  total_size: string | null;
-  video_quality: string | null;
-  output_file: string | null;
-};
-
-export type State =
-  | { Waiting: string }
-  | 'Recording'
-  | 'Muxing'
-  | 'Finished'
-  | 'Idle'
-  | 'Ended'
-  | 'AlreadyProcessed'
-  | 'Interrupted';
-
-export const stateString = (state: State) => {
+export const stateString = (state: YTAState) => {
   if (typeof state === 'object' && 'Waiting' in state)
     return 'Waiting (' + state.Waiting + ')';
   else if (state === 'AlreadyProcessed') return 'Already Processed';
   else return state;
 };
-export const stateKey = (state: State) =>
-  typeof state === 'object' ? Object.keys(state)[0] : state;
+export const stateKey = (state: YTAState) =>
+  typeof state === 'object'
+    ? (Object.keys(state) as (keyof typeof state)[])[0]
+    : state;
 
+const stateSort: ReturnType<typeof stateKey>[] = [
+  'Recording',
+  'Muxing',
+  'Waiting',
+  'Finished',
+  'Idle',
+  'Ended',
+  'AlreadyProcessed',
+  'Interrupted',
+];
 export const useQueryTasks = () =>
   useQuery(
     ['tasks'],
     () =>
       fetch('/api/tasks')
         .then((res) => res.json())
-        .then((res) => res as TaskWithStatus[]),
+        .then((res) =>
+          (res as TaskWithStatus[]).sort(
+            (a, b) =>
+              stateSort.indexOf(stateKey(a.status.state)) -
+              stateSort.indexOf(stateKey(b.status.state))
+          )
+        ),
     {
       refetchInterval: 1000,
       keepPreviousData: true,

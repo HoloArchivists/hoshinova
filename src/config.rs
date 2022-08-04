@@ -1,8 +1,10 @@
 use crate::module::TaskStatus;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
     pub scraper: ScraperConfig,
@@ -11,10 +13,12 @@ pub struct Config {
     pub channel: Vec<ChannelConfig>,
 
     #[serde(skip)]
+    #[ts(skip)]
     config_path: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct YtarchiveConfig {
     pub executable_path: String,
     pub working_directory: String,
@@ -22,38 +26,46 @@ pub struct YtarchiveConfig {
     pub quality: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct ScraperConfig {
     pub rss: ScraperRSSConfig,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct ScraperRSSConfig {
     #[serde(with = "humantime_serde")]
+    #[ts(type = "string")]
     pub poll_interval: std::time::Duration,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct NotifierConfig {
     pub discord: Option<NotifierDiscordConfig>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct NotifierDiscordConfig {
     pub webhook_url: String,
     pub notify_on: Vec<TaskStatus>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct WebserverConfig {
     pub bind_address: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, TS, Serialize, Deserialize, Debug)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct ChannelConfig {
     pub id: String,
     pub name: String,
     #[serde(with = "serde_regex")]
+    #[ts(type = "string[]")]
     pub filters: Vec<regex::Regex>,
     pub outpath: String,
     /// If not present, will be fetched during runtime.

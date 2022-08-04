@@ -20,6 +20,7 @@ use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::{mpsc, RwLock},
 };
+use ts_rs::TS;
 
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
@@ -319,7 +320,8 @@ impl Module for YTArchive {
 }
 
 /// The current state of ytarchive.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, TS, Serialize)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct YTAStatus {
     version: Option<String>,
     state: YTAState,
@@ -332,7 +334,8 @@ pub struct YTAStatus {
     output_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, TS, Serialize)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub enum YTAState {
     Idle,
     Waiting(Option<DateTime<Utc>>),
