@@ -294,9 +294,9 @@ impl Json {
             ),
         };
         let json = JsonSchema::new(video, audio, metadata);
-        let json_string = serde_json::to_string(&json).expect("Failed to serialize JSON");
+        let json_string = serde_json::to_string_pretty(&json).expect("Failed to serialize JSON");
         tokio::fs::write(
-            format!("{}/{}.json", &task.output_directory, task_name),
+            format!("{}/{}.json", &task.output_directory, &task.video_id),
             json_string.as_bytes(),
         )
         .await?;
