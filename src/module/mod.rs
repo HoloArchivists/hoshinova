@@ -37,7 +37,13 @@ pub struct Task {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct Notification {
     pub task: Task,
-    pub status: TaskStatus,
+    pub status: Status,
+}
+
+#[derive(Debug, Clone)]
+pub enum Status {
+    pub task(TaskStatus),
+    pub playability(PlayabilityStatus),
 }
 
 #[derive(Debug, Clone, TS)]
