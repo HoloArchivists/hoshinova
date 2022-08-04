@@ -11,6 +11,13 @@ will still undergo a lot of breaking changes. Upgrade with caution.
 
 ![Screenshot of Web UI](.github/screenshot.png)
 
+## Features
+
+- Monitor and automatically record live streams from multiple YouTube channels
+- View and manage recording status from a web interface
+- Receive notifications whenever a stream goes live, or has finished being
+  recorded
+
 ## Install
 
 You can get hoshinova using either one of the following methods.
@@ -206,6 +213,11 @@ verbose logging.
 ```
 RUST_LOG=debug cargo run
 ```
+
+Note that you will likely also get debug logs from libraries that hoshinova
+depends on. To only get debug logs for hoshinova, use
+`RUST_LOG=hoshinova=debug`. For more information, see
+[env_logger's documentation](https://docs.rs/env_logger/0.9.0/env_logger/).
 
 ## Support
 
