@@ -74,6 +74,61 @@ pub enum PlayabilityStatus {
     LoginRequired,
     Unknown,
 }
+impl Serialize for PlayabilityStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(match self {
+            PlayabilityStatus::Ok => "ok",
+            PlayabilityStatus::OnLive => "live",
+            PlayabilityStatus::Removed => "removed",
+            PlayabilityStatus::Offline => "offline",
+            PlayabilityStatus::MembersOnly => "members_only",
+            PlayabilityStatus::Unknown => "unknown",
+            PlayabilityStatus::Privated => "privated",
+            PlayabilityStatus::Unlisted => "unlisted",
+            PlayabilityStatus::Copyrighted => "copyrighted",
+            PlayabilityStatus::LoginRequired => "login_required",
+        })
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PlayabilityStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match &*s {
+            "ok" => Ok(PlayabilityStatus::Ok),
+            "live" => Ok(PlayabilityStatus::OnLive),
+            "removed" => Ok(PlayabilityStatus::Removed),
+            "offline" => Ok(PlayabilityStatus::Offline),
+            "members_only" => Ok(PlayabilityStatus::MembersOnly),
+            "unknown" => Ok(PlayabilityStatus::Unknown),
+            "privated" => Ok(PlayabilityStatus::Privated),
+            "unlisted" => Ok(PlayabilityStatus::Unlisted),
+            "copyrighted" => Ok(PlayabilityStatus::Copyrighted),
+            "login_required" => Ok(PlayabilityStatus::LoginRequired),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &[
+                    "ok",
+                    "live",
+                    "removed",
+                    "offline",
+                    "members_only",
+                    "unknown",
+                    "privated",
+                    "unlisted",
+                    "copyrighted",
+                    "login_required",
+                ],
+            )),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "web/src/bindings/")]
