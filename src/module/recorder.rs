@@ -124,55 +124,111 @@ impl Json {
         }
 
         // Check playability status
-        let playability_status = match res {
+        let (message, playability_status) = match res {
             html if html.contains(r#"offerId":"sponsors_only_video"#) => {
                 info!("{} Stream is members only", task_name);
-                Some(Message::ToNotify(Notification {
-                    task: task.clone(),
-                    status: Status::Playability(PlayabilityStatus::Copyrighted),
-                }));
-                PlayabilityStatus::MembersOnly
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::MembersOnly),
+                    })),
+                    PlayabilityStatus::MembersOnly,
+                )
             }
             html if html.contains(r#"status":"UNPLAYABLE"#) => {
                 info!("{} Stream is copyrighted", task_name);
-                Some(Message::ToNotify(Notification {
-                    task: task.clone(),
-                    status: Status::Playability(PlayabilityStatus::Copyrighted),
-                }));
-                PlayabilityStatus::Copyrighted
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Copyrighted),
+                    })),
+                    PlayabilityStatus::Copyrighted,
+                )
             }
             html if html.contains(r#"status":"LOGIN_REQUIRED"#) => {
-                info!("{} Stream is copyrighted", task_name);
-                Some(Message::ToNotify(Notification {
-                    task: task.clone(),
-                    status: Status::Playability(PlayabilityStatus::Copyrighted),
-                }));
-                PlayabilityStatus::Privated
+                info!("{} Stream is private", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Privated),
+                    })),
+                    PlayabilityStatus::Privated,
+                )
             }
             html if html.contains(r#"status":"ERROR"#) => {
-                info!("{} Stream is copyrighted", task_name);
-                Some(Message::ToNotify(Notification {
-                    task: task.clone(),
-                    status: Status::Playability(PlayabilityStatus::Copyrighted),
-                }));
-                PlayabilityStatus::Removed
+                info!("{} Stream is removed", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Removed),
+                    })),
+                    PlayabilityStatus::Removed,
+                )
             }
             html if html.contains(r#"status":"OK"#) => match html {
                 html if html.contains("\"isUnlisted\":true") => {
-                    info!("{} Stream is copyrighted", task_name);
-                    Some(Message::ToNotify(Notification {
-                        task: task.clone(),
-                        status: Status::Playability(PlayabilityStatus::Copyrighted),
-                    }));
-                    PlayabilityStatus::Unlisted
+                    info!("{} Stream is unlisted", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::Unlisted),
+                        })),
+                        PlayabilityStatus::Unlisted,
+                    )
                 }
-                html if html.contains("hlsManifestUrl") => PlayabilityStatus::OnLive,
-                _ => PlayabilityStatus::Ok,
+                html if html.contains("hlsManifestUrl") => {
+                    info!("{} Stream is live", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::OnLive),
+                        })),
+                        PlayabilityStatus::OnLive,
+                    )
+                }
+                _ => {
+                    info!("{} Stream is available", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::Ok),
+                        })),
+                        PlayabilityStatus::Ok,
+                    )
+                }
             },
-            html if html.contains(r#"status":"LIVE_STREAM_OFFLINE"#) => PlayabilityStatus::Offline,
-            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => PlayabilityStatus::LoginRequired,
-            _ => PlayabilityStatus::Unknown,
+            html if html.contains(r#"status":"LIVE_STREAM_OFFLINE"#) => {
+                info!("{} Stream is offline", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Offline),
+                    })),
+                    PlayabilityStatus::Offline,
+                )
+            }
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => {
+                info!("{} Stream requires login", task_name);
+                (
+                    Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::LoginRequired),
+                    }),
+                    PlayabilityStatus::LoginRequired,
+                )
+            }
+            _ => {
+                info!("{} Unknown status", task_name);
+                (
+                    Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Unknown),
+                    }),
+                    PlayabilityStatus::Unknown,
+                )
+            }
         };
+        bus.send(message).await?;
         status.playability = Some(playability_status);
 
         let mut video = String::new();
@@ -460,7 +516,8 @@ impl YTArchive {
                     task: task.clone(),
                     status: status.clone(),
                 }))
-                .await).is_err()
+                .await)
+                .is_err()
             {
                 break;
             }

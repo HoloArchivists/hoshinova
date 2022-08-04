@@ -1,4 +1,4 @@
-use super::{Message, Module, Notification, Status, TaskStatus, PlayabilityStatus};
+use super::{Message, Module, Notification, PlayabilityStatus, Status, TaskStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, APP_NAME, APP_USER_AGENT};
 use anyhow::Result;
