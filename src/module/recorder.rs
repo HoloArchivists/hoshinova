@@ -340,6 +340,7 @@ pub enum YTAState {
     Muxing,
     Finished,
     AlreadyProcessed,
+    Ended,
     Interrupted,
 }
 
@@ -417,6 +418,8 @@ impl YTAStatus {
             self.state = YTAState::Muxing;
         } else if line.starts_with("Livestream has been processed") {
             self.state = YTAState::AlreadyProcessed;
+        } else if line.starts_with("Livestream has ended and is being processed") {
+            self.state = YTAState::Ended;
         } else if line.starts_with("Final file: ") {
             self.state = YTAState::Finished;
             self.output_file = Some(strip_ansi(&line[12..]));
