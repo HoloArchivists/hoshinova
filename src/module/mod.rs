@@ -54,6 +54,21 @@ pub struct MetadataStatus {
     pub status: JsonStatus,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
+pub enum PlayabilityStatus {
+    MembersOnly,
+    Privated,
+    Copyrighted,
+    Removed,
+    Unlisted,
+    OnLive,
+    Ok,
+    Offline,
+    LoginRequired,
+    Unknown,
+}
+
 #[derive(Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "web/src/bindings/")]
 pub enum TaskStatus {
