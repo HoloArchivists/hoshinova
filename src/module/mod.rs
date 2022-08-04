@@ -40,10 +40,10 @@ pub struct Notification {
     pub status: Status,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Status {
-    pub task(TaskStatus),
-    pub playability(PlayabilityStatus),
+    Task(TaskStatus),
+    Playability(PlayabilityStatus),
 }
 
 #[derive(Debug, Clone, TS)]
