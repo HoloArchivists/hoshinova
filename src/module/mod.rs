@@ -1,4 +1,4 @@
-use self::recorder::YTAStatus;
+use self::recorder::{JsonStatus, YTAStatus};
 use crate::{config::Config, msgbus::BusTx};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -18,6 +18,7 @@ pub enum Message {
     ToRecord(Task),
     ToNotify(Notification),
     RecordingStatus(RecordingStatus),
+    MetadataStatus(MetadataStatus),
 }
 
 #[derive(Debug, Clone, TS, Serialize, Deserialize)]
@@ -44,6 +45,13 @@ pub struct Notification {
 pub struct RecordingStatus {
     pub task: Task,
     pub status: YTAStatus,
+}
+
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
+pub struct MetadataStatus {
+    pub task: Task,
+    pub status: JsonStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, TS)]

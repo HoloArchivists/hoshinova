@@ -1,14 +1,15 @@
-use super::{Message, Module, Notification, Task, TaskStatus};
-use crate::msgbus::BusTx;
-use crate::{config::Config, module::RecordingStatus};
+use super::{Message, Module, Notification, Task, TaskStatus, PlayabilityStatus, Status};
+use crate::{config::Config, module::MetadataStatus, module::RecordingStatus};
+use crate::{msgbus::BusTx, APP_USER_AGENT};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::Serialize;
-use std::collections::HashSet;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
     path::Path,
     process::Stdio,
@@ -22,6 +23,25 @@ use tokio::{
     sync::{mpsc, RwLock},
 };
 use ts_rs::TS;
+
+struct Priority {
+    video: [u16; 20],
+    audio: [u16; 7],
+}
+
+const PRIORITY: Priority = Priority {
+    video: [
+        337, 315, 266, 138, // 2160p60
+        313, 336, // 2160p
+        308, // 1440p60
+        271, 264, // 1440p
+        335, 303, 299, // 1080p60
+        248, 169, 137, // 1080p
+        334, 302, 298, // 720p60
+        247, 136, // 720p
+    ],
+    audio: [251, 141, 171, 140, 250, 249, 139],
+};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 struct VideoInfo {
@@ -53,6 +73,137 @@ impl JsonSchema {
     }
 }
 
+pub struct Json {
+    config: Arc<RwLock<Config>>,
+}
+
+impl Json {
+    /// This function generates a serialiazable struct loosely
+    /// following the schema of auto-ytarchive-raw
+    async fn get(client: Client, cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+        let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
+
+        // Ensure the working directory exists
+        let cfg = cfg.jsons;
+        tokio::fs::create_dir_all(&cfg.working_directory)
+            .await
+            .map_err(|e| anyhow!("Failed to create working directory: {}", e))?;
+
+        // Ensure the output directory exists
+        tokio::fs::create_dir_all(&task.output_directory)
+            .await
+            .map_err(|e| anyhow!("Failed to create output directory: {:?}", e))?;
+
+        // Fetch the video page
+        let mut status = JsonStatus::new();
+        bus.send(Message::MetadataStatus(MetadataStatus {
+            task: task.clone(),
+            status: status.clone(),
+        }))
+        .await?;
+        let url = format!("https://www.youtube.com/watch?v={}", task.video_id);
+        let res = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Error fetching video page: {}", e))?
+            .text()
+            .await
+            .map_err(|e| anyhow!("Error fetching video page: {}", e))?;
+
+        // Find streams (above playability because we borrow res)
+        let mut map_itag_url = HashMap::new();
+        let itag_re =
+            Regex::new(r#"itag":(\d+),"url":"([^"]+)"#).expect("Failed to compile itag regex");
+        for capture in itag_re.captures_iter(&res) {
+            let itag = capture[0].to_string();
+            let url = capture[1].to_string();
+            if url.contains("noclen") {
+                map_itag_url.insert(itag, url);
+            }
+        }
+
+        // Check playability status
+        let playability_status = match res {
+            html if html.contains(r#"offerId":"sponsors_only_video"#) => {
+                info!("{} Stream is members only", task_name);
+                Some(Message::ToNotify(Notification {
+                    task: task.clone(),
+                    status: TaskStatus::Waiting,
+                }));
+                PlayabilityStatus::MembersOnly
+            }
+            html if html.contains(r#"status":"UNPLAYABLE"#) => {
+                info!("{} Stream is copyrighted", task_name);
+                Some(Message::ToNotify(Notification {
+                    task: task.clone(),
+                    status: Status::playability(PlayabilityStatus::Copyrighted),
+                }));
+                PlayabilityStatus::Copyrighted},
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => PlayabilityStatus::Privated,
+            html if html.contains(r#"status":"ERROR"#) => PlayabilityStatus::Removed,
+            html if html.contains(r#"status":"OK"#) => match html {
+                html if html.contains("\"isUnlisted\":true") => PlayabilityStatus::Unlisted,
+                html if html.contains("hlsManifestUrl") => PlayabilityStatus::OnLive,
+                _ => PlayabilityStatus::Ok,
+            },
+            html if html.contains(r#"status":"LIVE_STREAM_OFFLINE"#) => PlayabilityStatus::Offline,
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => PlayabilityStatus::LoginRequired,
+            _ => PlayabilityStatus::Unknown,
+        };
+        status.playability = Some(playability_status);
+
+        let mut video = String::new();
+        let mut video_quality = String::new();
+        let mut audio = String::new();
+        let mut audio_quality = String::new();
+
+        for itag in PRIORITY.video {
+            match map_itag_url.get(&itag.to_string()) {
+                Some(url) => {
+                    video = url.to_string();
+                    video_quality = itag.to_string()
+                }
+                _ => warn!("{} got empty video sources.", task.video_id),
+            }
+        }
+        for itag in PRIORITY.audio {
+            match map_itag_url.get(&itag.to_string()) {
+                Some(url) => {
+                    audio = url.to_string();
+                    audio_quality = itag.to_string()
+                }
+                _ => warn!("{} got empty audio sources.", task.video_id),
+            }
+        }
+
+        status.video_quality = Some(video_quality);
+        status.audio_quality = Some(audio_quality);
+
+        let metadata = VideoInfo {
+            title: task.title,
+            id: task.video_id,
+            thumbnail: task.video_picture,
+            channel_name: task.channel_name,
+            channel_url: format!("https://www.youtube.com/channel/{}", task.channel_id),
+        };
+        let json = JsonSchema::new(video, audio, metadata);
+        let json_string = serde_json::to_string(&json).expect("Failed to serialize JSON");
+        tokio::fs::write(
+            format!("{}/{}.json", &task.output_directory, task_name),
+            json_string.as_bytes(),
+        )
+        .await?;
+        status.state = JsonState::Finished;
+        bus.send(Message::MetadataStatus(MetadataStatus {
+            task: task.clone(),
+            status: status.clone(),
+        }))
+        .await?;
+
+        Ok(())
+    }
+}
 
 #[async_trait]
 impl Module for Json {
@@ -87,6 +238,36 @@ impl Module for Json {
         Ok(())
     }
 }
+
+/// The current state of ytarchive.
+#[derive(Debug, Clone, Serialize)]
+pub struct JsonStatus {
+    state: JsonState,
+    playability: Option<PlayabilityStatus>,
+    video_quality: Option<String>,
+    audio_quality: Option<String>,
+    output_file: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum JsonState {
+    Idle,
+    Finished,
+    Interrupted,
+}
+
+impl JsonStatus {
+    pub fn new() -> Self {
+        Self {
+            state: JsonState::Idle,
+            playability: None,
+            video_quality: None,
+            audio_quality: None,
+            output_file: None,
+        }
+    }
+}
+
 
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
