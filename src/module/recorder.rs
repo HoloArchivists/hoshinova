@@ -76,21 +76,13 @@ impl JsonSchema {
     }
 }
 
-pub struct Json {
-    config: Arc<RwLock<Config>>,
-}
+pub struct Json {}
 
 impl Json {
     /// This function generates a serialiazable struct loosely
     /// following the schema of auto-ytarchive-raw
-    async fn get(client: Client, cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+    async fn get(client: Client, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
         let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
-
-        // Ensure the working directory exists
-        let cfg = cfg.jsons;
-        tokio::fs::create_dir_all(&cfg.working_directory)
-            .await
-            .map_err(|e| anyhow!("Failed to create working directory: {}", e))?;
 
         // Ensure the output directory exists
         tokio::fs::create_dir_all(&task.output_directory)
@@ -117,25 +109,25 @@ impl Json {
         // Find streams (above playability because we borrow res)
         let mut map_itag_url = HashMap::new();
         let itag_re =
-            Regex::new(r#"itag":(\d+),"url":"([^"]+)"#).expect("Failed to compile itag regex");
+            Regex::new(r#"itag":(\d+?),"url":"([^"]+)"#).expect("Failed to compile itag regex");
         for capture in itag_re.captures_iter(&res) {
-            let itag = capture[0].to_string();
-            let url = capture[1].to_string();
+            let itag = capture[1].to_string();
+            let url = capture[2].to_string();
             if url.contains("noclen") {
                 map_itag_url.insert(itag, url);
             }
         }
 
         // Description
-        let mut description = String::new();
+        let description;
         if res.contains(r#"description":{"simpleText":"#) {
             // Should probably refactor the re to avoid this if
-            let description_re = Regex::new("\"description\":{\"simpleText\":\"(.+?)\"},")
+            let description_re = Regex::new(r#""description":\{"simpleText":"(.+?)"},"#)
                 .expect("Failed to compile description regex");
             description = match description_re
                 .captures(&res)
                 .expect("Description not found")
-                .get(0)
+                .get(1)
             {
                 Some(text) => text.as_str().to_string(),
                 None => "".to_string(),
@@ -250,7 +242,6 @@ impl Json {
             }
         };
         bus.send(message).await?;
-        status.playability = Some(playability_status);
 
         let mut video = String::new();
         let mut video_quality = String::new();
@@ -263,8 +254,11 @@ impl Json {
                     video = url.to_string();
                     video_quality = itag.to_string()
                 }
-                _ => warn!("{} got empty video sources.", task.video_id),
+                _ => (),
             }
+        }
+        if video == String::new() {
+            warn!("{} got empty video sources.", task.video_id)
         }
         for itag in PRIORITY.audio {
             match map_itag_url.get(&itag.to_string()) {
@@ -272,17 +266,20 @@ impl Json {
                     audio = url.to_string();
                     audio_quality = itag.to_string()
                 }
-                _ => warn!("{} got empty audio sources.", task.video_id),
+                _ => (),
             }
+        }
+        if audio == String::new() {
+            warn!("{} got empty audio sources.", task.video_id)
         }
 
         status.video_quality = Some(video_quality);
         status.audio_quality = Some(audio_quality);
 
+        status.playability = Some(playability_status);
         // Getting thumbnail
         let image_data = client.get(&url).send().await?.bytes().await?;
         let thumbnail = format!("data:image/jpeg;base64,{}", BASE64URL.encode(&image_data));
-
 
         let metadata = VideoInfo {
             title: task.title.to_owned(),
@@ -316,8 +313,8 @@ impl Json {
 
 #[async_trait]
 impl Module for Json {
-    fn new(config: Arc<RwLock<Config>>) -> Self {
-        Self { config }
+    fn new(_config: Arc<RwLock<Config>>) -> Self {
+        Self {}
     }
 
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
@@ -327,14 +324,12 @@ impl Module for Json {
                 Message::ToRecord(task) => {
                     debug!("Spawning thread for task: {:?}", task);
                     let mut tx = tx.clone();
-                    let cfg = &*self.config.read().await;
-                    let cfg = cfg.clone();
                     let client = Client::builder()
                         .user_agent(APP_USER_AGENT)
                         .build()
                         .expect("Failed to create client");
                     tokio::spawn(async move {
-                        if let Err(e) = Json::get(client, cfg, task, &mut tx).await {
+                        if let Err(e) = Json::get(client, task, &mut tx).await {
                             error!("Failed to get json for task: {:?}", e);
                         };
                     });
@@ -362,7 +357,6 @@ pub struct JsonStatus {
 pub enum JsonState {
     Idle,
     Finished,
-    Interrupted,
 }
 
 impl JsonStatus {
