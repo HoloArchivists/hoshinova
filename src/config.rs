@@ -31,7 +31,6 @@ pub struct YtarchiveConfig {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct JsonsConfig {
     pub working_directory: String,
-    pub quality: String,
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]

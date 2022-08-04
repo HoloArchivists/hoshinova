@@ -130,6 +130,7 @@ async fn main() -> Result<()> {
     futures::try_join!(
         h_scraper,
         h_recorder,
+        h_json,
         h_notifier,
         h_signal,
         h_bus,

@@ -40,7 +40,7 @@ pub struct Notification {
     pub status: Status,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Status {
     Task(TaskStatus),
     Playability(PlayabilityStatus),
@@ -167,6 +167,50 @@ impl<'de> serde::Deserialize<'de> for TaskStatus {
             _ => Err(serde::de::Error::unknown_variant(
                 &s,
                 &["waiting", "recording", "done", "failed"],
+            )),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Status {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match &*s {
+            "ok" => Ok(Status::Playability(PlayabilityStatus::Ok)),
+            "live" => Ok(Status::Playability(PlayabilityStatus::OnLive)),
+            "removed" => Ok(Status::Playability(PlayabilityStatus::Removed)),
+            "offline" => Ok(Status::Playability(PlayabilityStatus::Offline)),
+            "members_only" => Ok(Status::Playability(PlayabilityStatus::MembersOnly)),
+            "unknown" => Ok(Status::Playability(PlayabilityStatus::Unknown)),
+            "privated" => Ok(Status::Playability(PlayabilityStatus::Privated)),
+            "unlisted" => Ok(Status::Playability(PlayabilityStatus::Unlisted)),
+            "copyrighted" => Ok(Status::Playability(PlayabilityStatus::Copyrighted)),
+            "login_required" => Ok(Status::Playability(PlayabilityStatus::LoginRequired)),
+            "waiting" => Ok(Status::Task(TaskStatus::Waiting)),
+            "recording" => Ok(Status::Task(TaskStatus::Recording)),
+            "done" => Ok(Status::Task(TaskStatus::Done)),
+            "failed" => Ok(Status::Task(TaskStatus::Failed)),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &[
+                    "ok",
+                    "live",
+                    "removed",
+                    "offline",
+                    "members_only",
+                    "unknown",
+                    "privated",
+                    "unlisted",
+                    "copyrighted",
+                    "login_required",
+                    "waiting",
+                    "recording",
+                    "done",
+                    "failed",
+                ],
             )),
         }
     }
