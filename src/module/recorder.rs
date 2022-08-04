@@ -129,7 +129,7 @@ impl Json {
                 info!("{} Stream is members only", task_name);
                 Some(Message::ToNotify(Notification {
                     task: task.clone(),
-                    status: TaskStatus::Waiting,
+                    status: Status::Playability(PlayabilityStatus::Copyrighted),
                 }));
                 PlayabilityStatus::MembersOnly
             }
@@ -181,11 +181,14 @@ impl Json {
         status.audio_quality = Some(audio_quality);
 
         let metadata = VideoInfo {
-            title: task.title,
-            id: task.video_id,
-            thumbnail: task.video_picture,
-            channel_name: task.channel_name,
-            channel_url: format!("https://www.youtube.com/channel/{}", task.channel_id),
+            title: task.title.to_owned(),
+            id: task.video_id.to_owned(),
+            thumbnail: task.video_picture.to_owned(),
+            channel_name: task.channel_name.to_owned(),
+            channel_url: format!(
+                "https://www.youtube.com/channel/{}",
+                task.channel_id.to_owned()
+            ),
         };
         let json = JsonSchema::new(video, audio, metadata);
         let json_string = serde_json::to_string(&json).expect("Failed to serialize JSON");
@@ -267,7 +270,6 @@ impl JsonStatus {
         }
     }
 }
-
 
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
@@ -451,21 +453,21 @@ impl YTArchive {
                     info!("{} Waiting for stream to go live", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Waiting,
+                        status: Status::Task(TaskStatus::Waiting),
                     }))
                 }
                 YTAState::Recording => {
                     info!("{} Recording started", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Recording,
+                        status: Status::Task(TaskStatus::Recording),
                     }))
                 }
                 YTAState::Finished => {
                     info!("{} Recording finished", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Done,
+                        status: Status::Task(TaskStatus::Done),
                     }))
                 }
                 YTAState::AlreadyProcessed => {
@@ -476,7 +478,7 @@ impl YTArchive {
                     info!("{} Recording failed: interrupted", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Failed,
+                        status: Status::Task(TaskStatus::Failed),
                     }))
                 }
                 _ => None,
