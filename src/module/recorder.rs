@@ -23,6 +23,37 @@ use tokio::{
 };
 use ts_rs::TS;
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct VideoInfo {
+    title: String,
+    id: String,
+    thumbnail: String,
+    channel_name: String,
+    channel_url: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct JsonSchema {
+    video: String,
+    audio: String,
+    metadata: VideoInfo,
+    version: String,
+    createTime: String,
+}
+
+impl JsonSchema {
+    fn new(video: String, audio: String, metadata: VideoInfo) -> JsonSchema {
+        JsonSchema {
+            video: video,
+            audio: audio,
+            metadata: metadata,
+            version: "".to_string(),
+            createTime: chrono::prelude::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+
 #[async_trait]
 impl Module for Json {
     fn new(config: Arc<RwLock<Config>>) -> Self {
