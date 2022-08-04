@@ -145,7 +145,7 @@ impl Module for RSS {
             let err = self
                 .run_loop(scraped.clone())
                 .await
-                .map(|task| tx.send(Message::ToRecord(task.clone())))
+                .map(|task| tx.send(Message::ToRecord(task)))
                 .buffer_unordered(4)
                 .collect::<Vec<Result<_, _>>>()
                 .await

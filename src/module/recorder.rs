@@ -64,9 +64,9 @@ struct JsonSchema {
 impl JsonSchema {
     fn new(video: String, audio: String, metadata: VideoInfo) -> JsonSchema {
         JsonSchema {
-            video: video,
-            audio: audio,
-            metadata: metadata,
+            video,
+            audio,
+            metadata,
             version: "".to_string(),
             createTime: chrono::prelude::Utc::now().to_rfc3339(),
         }
@@ -233,7 +233,7 @@ impl Json {
 #[async_trait]
 impl Module for Json {
     fn new(config: Arc<RwLock<Config>>) -> Self {
-        Self { config: config }
+        Self { config }
     }
 
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
@@ -455,12 +455,12 @@ impl YTArchive {
             status.parse_line(&line);
 
             // Push the current status to the bus
-            if let Err(_) = bus
+            if (bus
                 .send(Message::RecordingStatus(RecordingStatus {
                     task: task.clone(),
                     status: status.clone(),
                 }))
-                .await
+                .await).is_err()
             {
                 break;
             }
@@ -508,7 +508,7 @@ impl YTArchive {
 
             if let Some(message) = message {
                 // Exit the loop if message failed to send
-                if let Err(_) = bus.send(message).await {
+                if (bus.send(message).await).is_err() {
                     break;
                 }
             }
