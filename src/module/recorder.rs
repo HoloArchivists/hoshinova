@@ -110,14 +110,14 @@ impl YTArchive {
                     Ok(line) => line.to_owned(),
                     Err(e) => {
                         trace!("Failed to read utf8: {:?}", e);
-                        return;
+                        break;
                     }
                 };
 
                 // Send the line to the channel
                 if let Err(e) = $tx.send(line).await {
                     trace!("Failed to send line: {:?}", e);
-                    return;
+                    break;
                 }
             }};
         }
@@ -149,6 +149,9 @@ impl YTArchive {
         let task_name_clone = task_name.clone();
         let h_wait = tokio::spawn(async move {
             let result = process.wait().await;
+
+            // Wait a bit for the stdout to be completely read
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
             // Stop threads
             done_clone.store(true, Ordering::Relaxed);
@@ -397,7 +400,7 @@ impl YTAStatus {
                 self.audio_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.total_size = Some(strip_ansi(x));
+                self.total_size = Some(strip_ansi(x.trim()));
             };
         } else if self.version == None && line.starts_with("ytarchive ") {
             self.version = Some(strip_ansi(&line[10..]));
