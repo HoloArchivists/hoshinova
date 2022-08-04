@@ -94,7 +94,7 @@ impl Serialize for PlayabilityStatus {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for PlayabilityStatus {
+impl<'de> Deserialize<'de> for PlayabilityStatus {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -153,7 +153,7 @@ impl Serialize for TaskStatus {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for TaskStatus {
+impl<'de> Deserialize<'de> for TaskStatus {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -172,7 +172,7 @@ impl<'de> serde::Deserialize<'de> for TaskStatus {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Status {
+impl<'de> Deserialize<'de> for Status {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
