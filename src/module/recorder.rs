@@ -1,5 +1,5 @@
 use super::{Message, Module, Notification, PlayabilityStatus, Status, Task, TaskStatus};
-use crate::{config::Config, module::MetadataStatus, module::RecordingStatus};
+use crate::{config::Config, module::MetadataStatus, module::RecordingStatus, APP_NAME};
 use crate::{msgbus::BusTx, APP_USER_AGENT};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -70,7 +70,7 @@ impl JsonSchema {
             video,
             audio,
             metadata,
-            version: "".to_string(),
+            version: APP_NAME.to_string(),
             createTime: chrono::prelude::Utc::now().to_rfc3339(),
         }
     }
