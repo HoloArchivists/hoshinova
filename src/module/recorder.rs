@@ -4,6 +4,7 @@ use crate::{msgbus::BusTx, APP_USER_AGENT};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use data_encoding::BASE64URL;
 use lazy_static::lazy_static;
 use regex::Regex;
 use reqwest::Client;
@@ -47,9 +48,11 @@ const PRIORITY: Priority = Priority {
 struct VideoInfo {
     title: String,
     id: String,
-    thumbnail: String,
     channel_name: String,
     channel_url: String,
+    description: String,
+    thumbnail: String,
+    thumbnail_url: String,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -121,6 +124,24 @@ impl Json {
             if url.contains("noclen") {
                 map_itag_url.insert(itag, url);
             }
+        }
+
+        // Description
+        let mut description = String::new();
+        if res.contains(r#"description":{"simpleText":"#) {
+            // Should probably refactor the re to avoid this if
+            let description_re = Regex::new("\"description\":{\"simpleText\":\"(.+?)\"},")
+                .expect("Failed to compile description regex");
+            description = match description_re
+                .captures(&res)
+                .expect("Description not found")
+                .get(0)
+            {
+                Some(text) => text.as_str().to_string(),
+                None => "".to_string(),
+            };
+        } else {
+            description = String::new();
         }
 
         // Check playability status
@@ -258,10 +279,17 @@ impl Json {
         status.video_quality = Some(video_quality);
         status.audio_quality = Some(audio_quality);
 
+        // Getting thumbnail
+        let image_data = client.get(&url).send().await?.bytes().await?;
+        let thumbnail = format!("data:image/jpeg;base64,{}", BASE64URL.encode(&image_data));
+
+
         let metadata = VideoInfo {
             title: task.title.to_owned(),
             id: task.video_id.to_owned(),
-            thumbnail: task.video_picture.to_owned(),
+            thumbnail,
+            description,
+            thumbnail_url: task.video_picture.to_owned(),
             channel_name: task.channel_name.to_owned(),
             channel_url: format!(
                 "https://www.youtube.com/channel/{}",

@@ -91,7 +91,9 @@ impl Module for Discord {
                 Status::Playability(PlayabilityStatus::MembersOnly) => ("Members Only", 0xeb4545),
                 Status::Playability(PlayabilityStatus::Copyrighted) => ("Copyrighted", 0xeb4545),
                 Status::Playability(PlayabilityStatus::Removed) => ("Removed", 0xeb4545),
-                Status::Playability(PlayabilityStatus::LoginRequired) => ("Login Required", 0xeb4545),
+                Status::Playability(PlayabilityStatus::LoginRequired) => {
+                    ("Login Required", 0xeb4545)
+                }
                 Status::Playability(PlayabilityStatus::Unlisted) => ("Unlisted", 0xeb4545),
                 Status::Playability(PlayabilityStatus::Unknown) => ("Unknown", 0xeb4545),
                 Status::Playability(PlayabilityStatus::OnLive) => ("Live", 0xeb4545),
