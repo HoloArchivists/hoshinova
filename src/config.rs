@@ -7,7 +7,6 @@ use ts_rs::TS;
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct Config {
     pub ytarchive: YtarchiveConfig,
-    pub jsons: JsonsConfig,
     pub scraper: ScraperConfig,
     pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
@@ -25,12 +24,6 @@ pub struct YtarchiveConfig {
     pub working_directory: String,
     pub args: Vec<String>,
     pub quality: String,
-}
-
-#[derive(Clone, TS, Serialize, Deserialize, Debug)]
-#[ts(export, export_to = "web/src/bindings/")]
-pub struct JsonsConfig {
-    pub working_directory: String,
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
