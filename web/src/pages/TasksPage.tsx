@@ -26,7 +26,7 @@ const TaskStateBadge = ({ state }: { state: State }) => (
         ? 'blue'
         : state === 'Muxing'
         ? 'yellow'
-        : state === 'Idle' || state === 'AlreadyProcessed'
+        : state === 'Idle' || state === 'AlreadyProcessed' || state === 'Ended'
         ? 'gray'
         : state === 'Interrupted'
         ? 'red'
@@ -77,6 +77,7 @@ const TasksPage = () => {
     'Waiting',
     'Finished',
     'Idle',
+    'Ended',
     'AlreadyProcessed',
     'Interrupted',
   ];

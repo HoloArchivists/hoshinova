@@ -33,6 +33,7 @@ export type State =
   | 'Muxing'
   | 'Finished'
   | 'Idle'
+  | 'Ended'
   | 'AlreadyProcessed'
   | 'Interrupted';
 
@@ -40,7 +41,7 @@ export const stateString = (state: State) => {
   if (typeof state === 'object' && 'Waiting' in state)
     return 'Waiting (' + state.Waiting + ')';
   else if (state === 'AlreadyProcessed') return 'Already Processed';
-  return state;
+  else return state;
 };
 export const stateKey = (state: State) =>
   typeof state === 'object' ? Object.keys(state)[0] : state;
