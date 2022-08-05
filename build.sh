@@ -9,7 +9,10 @@ set -e
 # See: https://github.com/cross-rs/cross/issues/724
 #
 
-# Pre-build: build the web UI
+# Pre-build: generate typescript bindings
+cargo test
+
+# Build web UI
 pushd web
   yarn install
   yarn build
@@ -23,7 +26,7 @@ targets=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-
 for target in "${targets[@]}"; do
   echo "Building for $target"
   cross build --target $target --release
-  
+
   ext=""
   if [[ $target == *"windows"* ]]; then
     ext=".exe"
