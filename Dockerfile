@@ -1,18 +1,15 @@
-FROM node:16 AS web-builder
-
 # Cache dependencies
-WORKDIR /src
+FROM node:16 as web-deps
+WORKDIR /src/web
 COPY web/package.json web/yarn.lock ./
 RUN yarn install
 
-# Build
-COPY web .
-RUN yarn build
-
-FROM rust:1.62-alpine AS rust-builder
+# Create base image for building Rust
+FROM rust:1.62-alpine AS rust-build-image
 RUN apk add --no-cache musl-dev
 
 # Cache dependencies
+FROM rust-build-image AS rust-deps
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 RUN set -ex; \
@@ -21,9 +18,30 @@ RUN set -ex; \
     cargo build --release --target x86_64-unknown-linux-musl; \
     rm -rf src;
 
-# Build
+# Generate TypeScript bindings
+FROM rust-build-image AS ts-bind
+WORKDIR /src
+COPY --from=rust-deps /usr/local/cargo /usr/local/cargo
 COPY . .
-COPY --from=web-builder /src /src/web
+RUN set -ex; \
+    touch src/main.rs; \
+    cargo test
+
+# Build the web app
+FROM node:16 AS web-builder
+WORKDIR /src/web
+COPY web .
+COPY --from=web-deps /src/web/node_modules /src/web/node_modules
+COPY --from=ts-bind /src/web/src/bindings /src/web/src/bindings
+RUN yarn build
+
+# Build the Rust app
+FROM rust-build-image AS rust-builder
+WORKDIR /src
+COPY --from=ts-bind /usr/local/cargo /usr/local/cargo
+COPY --from=ts-bind /src /src
+COPY --from=rust-deps /src/target /src/target
+COPY --from=web-builder /src/web/dist /src/web/dist
 RUN touch src/main.rs && \
     cargo build --release --target x86_64-unknown-linux-musl
 
