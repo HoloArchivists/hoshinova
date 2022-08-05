@@ -6,6 +6,9 @@
 **⚠️ Unstable Software**: This program is under heavy development. It works, but
 will still undergo a lot of breaking changes. Upgrade with caution.
 
+[![Discord](https://img.shields.io/discord/955170284644733018?label=Discord&logo=discord&logoColor=%23fff&style=for-the-badge)](https://discord.gg/y53h4pHB3n)
+[![GitHub release](https://img.shields.io/github/v/release/HoloArchivists/hoshinova?label=Download&style=for-the-badge)](https://github.com/HoloArchivists/hoshinova/releases)
+
 ![Screenshot of Web UI](.github/screenshot.png)
 
 ## Install
@@ -16,6 +19,10 @@ You can get hoshinova using either one of the following methods.
 
 You can download the latest binaries
 [from the releases page](https://github.com/HoloArchivists/hoshinova/releases).
+
+[![Windows x86-64](https://img.shields.io/static/v1?label=Windows&message=x86-64&color=informational&logo=windows&style=for-the-badge&logoColor=white)](https://github.com/HoloArchivists/hoshinova/releases/latest/download/hoshinova-x86_64-pc-windows-gnu.exe)
+[![Linux x86-64](https://img.shields.io/static/v1?label=Linux&message=x86-64&color=informational&logo=linux&style=for-the-badge&logoColor=white)](https://github.com/HoloArchivists/hoshinova/releases/latest/download/hoshinova-x86_64-unknown-linux-musl)
+[![Linux aarch64](https://img.shields.io/static/v1?label=Linux&message=aarch64&color=informational&logo=linux&style=for-the-badge&logoColor=white)](https://github.com/HoloArchivists/hoshinova/releases/latest/download/hoshinova-aarch64-unknown-linux-musl)
 
 Make sure you have [ytarchive](https://github.com/Kethsar/ytarchive) and
 [ffmpeg](https://ffmpeg.org/) installed and executable in your PATH
@@ -201,6 +208,8 @@ RUST_LOG=debug cargo run
 ```
 
 ## Support
+
+[![Discord](https://img.shields.io/discord/955170284644733018?label=Discord&logo=discord&logoColor=%23fff&style=for-the-badge)](https://discord.gg/y53h4pHB3n)
 
 This is very early in development. New features will be added, and existing
 features may be changed or removed without notice. We do not make any guarantees
