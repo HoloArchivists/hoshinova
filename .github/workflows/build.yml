@@ -1,0 +1,64 @@
+name: build
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+        - x86_64-pc-windows-gnu
+        - x86_64-unknown-linux-musl
+        - aarch64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+        cache: yarn
+        cache-dependency-path: web/yarn.lock
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+
+    - name: Generate TypeScript bindings
+      uses: actions-rs/cargo@v1
+      with:
+        use-cross: true
+        command: test
+        args: --release --locked --target ${{ matrix.target }}
+
+    - name: Build the Web UI
+      run: |
+        pushd web
+        yarn install --frozen-lockfile
+        yarn build
+        popd
+
+    - name: Build hoshinova
+      uses: actions-rs/cargo@v1
+      with:
+        use-cross: true
+        command: build
+        args: --release --locked --target ${{ matrix.target }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.target }}
+        path: |
+          target/**/release/hoshinova*
+          !target/**/release/hoshinova.d

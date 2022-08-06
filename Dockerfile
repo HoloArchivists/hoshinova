@@ -15,7 +15,7 @@ COPY Cargo.toml Cargo.lock ./
 RUN set -ex; \
     mkdir src; \
     echo 'fn main() {}' > src/main.rs; \
-    cargo build --release --target x86_64-unknown-linux-musl; \
+    cargo build --locked --release --target x86_64-unknown-linux-musl; \
     rm -rf src;
 
 # Generate TypeScript bindings
@@ -43,7 +43,7 @@ COPY --from=ts-bind /src /src
 COPY --from=rust-deps /src/target /src/target
 COPY --from=web-builder /src/web/dist /src/web/dist
 RUN touch src/main.rs && \
-    cargo build --release --target x86_64-unknown-linux-musl
+    cargo build --locked --release --target x86_64-unknown-linux-musl
 
 FROM alpine AS runner
 WORKDIR /app
