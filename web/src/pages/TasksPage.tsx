@@ -17,13 +17,15 @@ import {
   Title,
 } from '@mantine/core';
 import React from 'react';
-import { stateString, useQueryTasks } from '../api/tasks';
+import { stateString, useMutateCreateTask, useQueryTasks } from '../api/tasks';
 import { TaskWithStatus } from '../bindings/TaskWithStatus';
 import { SuspenseLoader } from '../shared/SuspenseLoader';
 import { IconPlus } from '@tabler/icons';
 import { closeAllModals, openModal } from '@mantine/modals';
+import { showNotification } from '@mantine/notifications';
 import { useQueryConfig } from '../api/config';
 import { YTAState } from '../bindings/YTAState';
+import { Task } from '../bindings/Task';
 
 const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
@@ -80,11 +82,13 @@ const rowElements = ({ task, status }: TaskWithStatus) => [
 
 const AddVideoModal = () => {
   const qConfig = useQueryConfig();
+  const mCreateTask = useMutateCreateTask();
 
   const [videoURL, setVideoURL] = React.useState('');
   const [destPaths, setDestPaths] = React.useState<
     { value: string; label: string }[]
   >([]);
+  const [destPath, setDestPath] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!qConfig.data) return;
@@ -97,7 +101,33 @@ const AddVideoModal = () => {
   }, [qConfig, destPaths]);
 
   const addVideo = () => {
-    alert('Work in progress!');
+    if (!destPath || !videoURL) return;
+
+    mCreateTask.mutateAsync(
+      {
+        video_url: videoURL,
+        output_directory: destPath,
+      },
+      {
+        onSuccess() {
+          showNotification({
+            message: 'Video added',
+            color: 'green',
+          });
+        },
+        async onError(err) {
+          let message = '';
+          if (err instanceof Response) message = await err.text();
+          showNotification({
+            title: 'Error adding video',
+            message,
+            color: 'red',
+          });
+          console.error(err);
+        },
+      }
+    );
+
     closeAllModals();
   };
 
@@ -122,9 +152,10 @@ const AddVideoModal = () => {
           setDestPaths((now) => [...now, item]);
           return item;
         }}
+        onChange={(e) => setDestPath(e)}
       />
       <Button fullWidth onClick={addVideo}>
-        [WIP] Add
+        Add
       </Button>
     </Stack>
   );

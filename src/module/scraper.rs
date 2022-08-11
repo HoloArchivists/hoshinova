@@ -1,5 +1,5 @@
 use super::{Message, Module, Task};
-use crate::{config, msgbus::BusTx, APP_USER_AGENT};
+use crate::{config, msgbus::BusTx, youtube, APP_USER_AGENT};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::stream::{self, Stream, StreamExt};
@@ -116,32 +116,8 @@ impl RSS {
                 continue;
             }
 
-            // Fetch the channel page
-            let channel_url = format!("https://www.youtube.com/channel/{}", channel.id);
-            let res = self
-                .client
-                .get(&channel_url)
-                .send()
-                .await
-                .map_err(|e| anyhow!("Error fetching channel page: {}", e))?
-                .text()
-                .await
-                .map_err(|e| anyhow!("Error fetching channel page: {}", e))?;
-
-            // Find the picture URL
-            lazy_static! {
-                static ref RE: regex::Regex =
-                    regex::Regex::new(r#"<meta name="twitter:image" content="(.*?)""#).unwrap();
-            }
-            let captures = RE
-                .captures(&res)
-                .ok_or_else(|| anyhow!("Could not find picture URL"))?;
-            let picture_url = captures
-                .get(1)
-                .ok_or_else(|| anyhow!("Could not find picture URL"))?
-                .as_str();
-            channel.picture_url = Some(picture_url.to_owned());
-            debug!("[{}] Found picture URL: {}", channel.id, picture_url);
+            channel.picture_url =
+                Some(youtube::channel::fetch_picture_url(self.client.clone(), &channel.id).await?);
         }
         Ok(())
     }

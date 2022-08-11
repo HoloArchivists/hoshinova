@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { YTAState } from '../bindings/YTAState';
 import { TaskWithStatus } from '../bindings/TaskWithStatus';
+import { rejectError } from './api';
+import { CreateTaskRequest } from '../bindings/CreateTaskRequest';
 
 export const stateString = (state: YTAState) => {
   if (typeof state === 'object' && 'Waiting' in state)
@@ -41,3 +43,20 @@ export const useQueryTasks = () =>
       keepPreviousData: true,
     }
   );
+
+export const useMutateCreateTask = () => {
+  const queryClient = useQueryClient();
+  return useMutation(
+    (task: CreateTaskRequest) =>
+      fetch('/api/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(task),
+      }).then(rejectError),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['tasks']);
+      },
+    }
+  );
+};
