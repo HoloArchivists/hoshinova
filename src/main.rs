@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 mod config;
 mod module;
 mod msgbus;
+mod youtube;
 
 pub static APP_NAME: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
 pub static APP_USER_AGENT: &str = concat!(
@@ -76,6 +77,7 @@ async fn main() -> Result<()> {
 
     // Load configuration file
     let config = config::load_config(&args.config)
+        .await
         .map_err(|e| anyhow!("Failed to read config file: {}", e))?;
     debug!("{:?}", config);
 
