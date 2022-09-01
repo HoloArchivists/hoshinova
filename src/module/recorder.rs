@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::{
     fs,
     path::Path,
@@ -24,6 +25,7 @@ use ts_rs::TS;
 
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
+    active_ids: Arc<RwLock<HashSet<String>>>,
 }
 
 impl YTArchive {
@@ -292,7 +294,8 @@ impl YTArchive {
 #[async_trait]
 impl Module for YTArchive {
     fn new(config: Arc<RwLock<Config>>) -> Self {
-        Self { config }
+        let active_ids = Arc::new(RwLock::new(HashSet::new()));
+        Self { config, active_ids }
     }
 
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
@@ -300,14 +303,26 @@ impl Module for YTArchive {
         while let Some(message) = rx.recv().await {
             match message {
                 Message::ToRecord(task) => {
+                    // Check if the task is already active
+                    if self.active_ids.read().await.contains(&task.video_id) {
+                        warn!("Task {} is already active, skipping", task.video_id);
+                        continue;
+                    }
+
                     debug!("Spawning thread for task: {:?}", task);
                     let mut tx = tx.clone();
                     let cfg = self.config.read().await;
                     let cfg = cfg.clone();
+                    let active_ids = self.active_ids.clone();
                     tokio::spawn(async move {
+                        let video_id = task.video_id.clone();
+                        active_ids.write().await.insert(video_id.clone());
+
                         if let Err(e) = YTArchive::record(cfg, task, &mut tx).await {
                             error!("Failed to record task: {:?}", e);
                         };
+
+                        active_ids.write().await.remove(&video_id);
                     });
                 }
                 _ => (),

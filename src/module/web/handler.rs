@@ -51,98 +51,34 @@ struct CreateTaskRequest {
     output_directory: String,
 }
 
-// TODO: clean up
-#[derive(Deserialize)]
-struct InitialPlayerResponse {
-    #[serde(rename = "videoDetails")]
-    video_details: InitialPlayerResponseVideoDetails,
-}
-#[derive(Deserialize)]
-struct InitialPlayerResponseVideoDetails {
-    #[serde(rename = "videoId")]
-    video_id: String,
-    title: String,
-    #[serde(rename = "channelId")]
-    channel_id: String,
-    author: String,
-    thumbnail: InitialPlayerResponseVideoDetailsThumbnail,
-}
-#[derive(Deserialize)]
-struct InitialPlayerResponseVideoDetailsThumbnail {
-    thumbnails: Vec<InitialPlayerResponseVideoDetailsThumbnailThumbnail>,
-}
-#[derive(Deserialize)]
-struct InitialPlayerResponseVideoDetailsThumbnailThumbnail {
-    url: String,
-    width: u32,
-    height: u32,
-}
-
 #[post("/api/task")]
 async fn post_task(
     tx: Data<BusTx<Message>>,
     taskreq: web::Json<CreateTaskRequest>,
 ) -> actix_web::Result<impl Responder> {
-    use actix_web::http::Uri;
-
     let taskreq = taskreq.into_inner();
+    let client = reqwest::Client::new();
 
-    // Parse URL
-    let uri = &taskreq
-        .video_url
-        .parse::<Uri>()
-        .map_err(|e| ErrorBadRequest(anyhow!("Invalid URL: {}", e)))?;
+    // Make sure the video URL is valid
+    let url = youtube::URL::parse(&taskreq.video_url).map_err(|e| ErrorBadRequest(e))?;
+    let video_id = url
+        .video_id()
+        .ok_or(ErrorBadRequest(anyhow!("Not a video URL")))?;
+    let video_url = format!("https://www.youtube.com/watch?v={}", video_id);
 
-    // Make sure it's a supported URL
-    let host = uri.host().ok_or(ErrorBadRequest(anyhow!("Invalid URL")))?;
-    if host != "youtube.com" && host != "www.youtube.com" && host != "youtu.be" {
-        return Err(ErrorBadRequest(anyhow!("Unsupported URL")));
-    }
-
-    // Fetch the video URL
-    let html = reqwest::get(&taskreq.video_url)
+    // Fetch video details
+    let ipr = youtube::video::fetch_initial_player_response(client.clone(), &video_url)
         .await
-        .map_err(|e| ErrorInternalServerError(anyhow!("Failed to fetch video URL: {}", e)))?
-        .error_for_status()
-        .map_err(|e| ErrorInternalServerError(anyhow!("Failed to fetch video URL: {}", e)))?
-        .text()
-        .await
-        .map_err(|e| ErrorInternalServerError(anyhow!("Failed to fetch video URL: {}", e)))?;
-
-    // Parse page contents
-    // TODO: refactor out into a separate module
-    lazy_static::lazy_static! {
-        static ref IPR_RE: regex::Regex =
-            regex::Regex::new(r#"ytInitialPlayerResponse = (.*?});"#).unwrap();
-    }
-
-    let ipr = IPR_RE
-        .captures(&html)
-        .ok_or(ErrorInternalServerError(anyhow!(
-            "Failed to find the initial player response"
-        )))?
-        .get(1)
-        .ok_or(ErrorInternalServerError(anyhow!(
-            "Failed to find the initial player response"
-        )))?
-        .as_str();
-
-    // Parse the initial player response
-    let ipr: InitialPlayerResponse = serde_json::from_str(ipr).map_err(|e| {
-        ErrorInternalServerError(anyhow!(
-            "Failed to parse the initial player response: {}",
-            e
-        ))
-    })?;
+        .map_err(|e| ErrorInternalServerError(e))?;
 
     // Get the best thumbnail
     let mut thumbs = ipr.video_details.thumbnail.thumbnails;
     thumbs.sort_by_key(|t| t.width);
+    let best_thumb = thumbs.last().map(|t| t.url.clone()).unwrap_or("".into());
 
     // Fetch the channel image
-    // TODO: reuse the Client
     let channel_picture =
-        youtube::channel::fetch_picture_url(reqwest::Client::new(), &ipr.video_details.channel_id)
+        youtube::channel::fetch_picture_url(client, &ipr.video_details.channel_id)
             .await
             .map_err(|e| {
                 ErrorInternalServerError(anyhow!("Failed to fetch channel picture: {}", e))
@@ -152,16 +88,18 @@ async fn post_task(
     let task = Task {
         title: ipr.video_details.title,
         video_id: ipr.video_details.video_id,
-        video_picture: thumbs.last().map(|t| t.url.clone()).unwrap_or("".into()),
+        video_picture: best_thumb,
         channel_name: ipr.video_details.author,
         channel_id: ipr.video_details.channel_id,
         channel_picture: Some(channel_picture),
         output_directory: taskreq.output_directory,
     };
 
+    // Broadcast it to the bus
     tx.send(Message::ToRecord(task))
         .await
         .map_err(|e| ErrorInternalServerError(e))?;
+
     Ok(HttpResponse::Accepted().finish())
 }
 
