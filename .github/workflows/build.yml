@@ -21,6 +21,24 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
+    - name: Cache rust dependencies
+      id: cache-dependencies
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
+
+    - name: Cache node_modules
+      id: cache-node
+      uses: actions/cache@v2
+      with:
+        path: |
+          web/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('**/yarn.lock') }}-${{ matrix.target }}
+
     - name: Setup Node
       uses: actions/setup-node@v3
       with:
