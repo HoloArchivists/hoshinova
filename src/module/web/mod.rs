@@ -13,6 +13,7 @@ use tokio::{
     select,
     sync::{mpsc, RwLock},
 };
+use ts_rs::TS;
 
 mod handler;
 
@@ -20,7 +21,8 @@ pub struct WebServer {
     config: Arc<RwLock<Config>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, TS, Serialize)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct TaskWithStatus {
     pub task: Task,
     pub status: YTAStatus,
@@ -31,8 +33,8 @@ type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
 impl WebServer {
     /// Return the webserver configuration
     async fn get_wsconfig(&self) -> Option<WebserverConfig> {
-        let config = &*self.config.read().await;
-        config.webserver.to_owned()
+        let config = self.config.read().await;
+        config.webserver.clone()
     }
 
     async fn bus_listen_loop(

@@ -2,23 +2,26 @@ use self::recorder::YTAStatus;
 use crate::{config::Config, msgbus::BusTx};
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
+use ts_rs::TS;
 
 pub mod notifier;
 pub mod recorder;
 pub mod scraper;
 pub mod web;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub enum Message {
     ToRecord(Task),
     ToNotify(Notification),
     RecordingStatus(RecordingStatus),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, TS, Serialize, Deserialize)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct Task {
     pub title: String,
     pub video_id: String,
@@ -29,19 +32,22 @@ pub struct Task {
     pub output_directory: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct Notification {
     pub task: Task,
     pub status: TaskStatus,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub struct RecordingStatus {
     pub task: Task,
     pub status: YTAStatus,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub enum TaskStatus {
     Waiting,
     Recording,
