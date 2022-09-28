@@ -40,7 +40,8 @@ pub struct Notification {
     pub status: Status,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, export_to = "web/src/bindings/")]
 pub enum Status {
     Task(TaskStatus),
     Playability(PlayabilityStatus),
@@ -60,7 +61,7 @@ pub struct MetadataStatus {
     pub status: JsonStatus,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "web/src/bindings/")]
 pub enum PlayabilityStatus {
     MembersOnly,

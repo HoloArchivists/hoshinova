@@ -10,7 +10,7 @@ use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::Path,
     process::Stdio,
@@ -56,12 +56,13 @@ struct VideoInfo {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct JsonSchema {
     video: String,
     audio: String,
     metadata: VideoInfo,
     version: String,
-    createTime: String,
+    create_time: String,
 }
 
 impl JsonSchema {
@@ -71,7 +72,7 @@ impl JsonSchema {
             audio,
             metadata,
             version: APP_NAME.to_string(),
-            createTime: chrono::prelude::Utc::now().to_rfc3339(),
+            create_time: chrono::prelude::Utc::now().to_rfc3339(),
         }
     }
 }
@@ -344,7 +345,7 @@ impl Module for Json {
 }
 
 /// The current state of ytarchive.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 pub struct JsonStatus {
     state: JsonState,
     playability: Option<PlayabilityStatus>,
@@ -353,7 +354,7 @@ pub struct JsonStatus {
     output_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub enum JsonState {
     Idle,
     Finished,

@@ -1,9 +1,8 @@
 use super::{Message, Module, Task};
 use crate::{config, msgbus::BusTx, youtube, APP_USER_AGENT};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use futures::stream::{self, Stream, StreamExt};
-use lazy_static::lazy_static;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{
