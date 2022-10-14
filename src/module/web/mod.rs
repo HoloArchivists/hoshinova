@@ -74,6 +74,9 @@ impl Module for WebServer {
             Some(cfg) => cfg,
             None => {
                 debug!("No webserver configured");
+
+                // Noop read the bus
+                while rx.recv().await.is_some() {}
                 return Ok(());
             }
         };
