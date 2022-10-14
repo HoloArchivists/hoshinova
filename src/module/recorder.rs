@@ -1,14 +1,16 @@
-use super::{Message, Module, Notification, Task, TaskStatus};
-use crate::msgbus::BusTx;
-use crate::{config::Config, module::RecordingStatus};
+use super::{Message, Module, Notification, PlayabilityStatus, Status, Task, TaskStatus};
+use crate::{config::Config, module::MetadataStatus, module::RecordingStatus, APP_NAME};
+use crate::{msgbus::BusTx, APP_USER_AGENT};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use data_encoding::BASE64URL;
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::Serialize;
-use std::collections::HashSet;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     path::Path,
     process::Stdio,
@@ -22,6 +24,353 @@ use tokio::{
     sync::{mpsc, RwLock},
 };
 use ts_rs::TS;
+
+struct Priority {
+    video: [u16; 20],
+    audio: [u16; 7],
+}
+
+const PRIORITY: Priority = Priority {
+    video: [
+        337, 315, 266, 138, // 2160p60
+        313, 336, // 2160p
+        308, // 1440p60
+        271, 264, // 1440p
+        335, 303, 299, // 1080p60
+        248, 169, 137, // 1080p
+        334, 302, 298, // 720p60
+        247, 136, // 720p
+    ],
+    audio: [251, 141, 171, 140, 250, 249, 139],
+};
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct VideoInfo {
+    title: String,
+    id: String,
+    channel_name: String,
+    channel_url: String,
+    description: String,
+    thumbnail: String,
+    thumbnail_url: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct JsonSchema {
+    video: String,
+    audio: String,
+    metadata: VideoInfo,
+    version: String,
+    create_time: String,
+}
+
+impl JsonSchema {
+    fn new(video: String, audio: String, metadata: VideoInfo) -> JsonSchema {
+        JsonSchema {
+            video,
+            audio,
+            metadata,
+            version: APP_NAME.to_string(),
+            create_time: chrono::prelude::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+pub struct Json {}
+
+impl Json {
+    /// This function generates a serialiazable struct loosely
+    /// following the schema of auto-ytarchive-raw
+    async fn get(client: Client, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+        let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
+
+        // Ensure the output directory exists
+        tokio::fs::create_dir_all(&task.output_directory)
+            .await
+            .map_err(|e| anyhow!("Failed to create output directory: {:?}", e))?;
+
+        // Fetch the video page
+        let mut status = JsonStatus::new();
+        bus.send(Message::MetadataStatus(MetadataStatus {
+            task: task.clone(),
+            status: status.clone(),
+        }))
+        .await?;
+        let url = format!("https://www.youtube.com/watch?v={}", task.video_id);
+        let res = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Error fetching video page: {}", e))?
+            .text()
+            .await
+            .map_err(|e| anyhow!("Error fetching video page: {}", e))?;
+
+        // Find streams (above playability because we borrow res)
+        let mut map_itag_url = HashMap::new();
+        let itag_re =
+            Regex::new(r#"itag":(\d+?),"url":"([^"]+)"#).expect("Failed to compile itag regex");
+        for capture in itag_re.captures_iter(&res) {
+            let itag = capture[1].to_string();
+            let url = capture[2].to_string();
+            if url.contains("noclen") {
+                map_itag_url.insert(itag, url);
+            }
+        }
+
+        // Description
+        let description;
+        if res.contains(r#"description":{"simpleText":"#) {
+            // Should probably refactor the re to avoid this if
+            let description_re = Regex::new(r#""description":\{"simpleText":"(.+?)"},"#)
+                .expect("Failed to compile description regex");
+            description = match description_re
+                .captures(&res)
+                .expect("Description not found")
+                .get(1)
+            {
+                Some(text) => text.as_str().to_string(),
+                None => "".to_string(),
+            };
+        } else {
+            description = String::new();
+        }
+
+        // Check playability status
+        let (message, playability_status) = match res {
+            html if html.contains(r#"offerId":"sponsors_only_video"#) => {
+                info!("{} Stream is members only", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::MembersOnly),
+                    })),
+                    PlayabilityStatus::MembersOnly,
+                )
+            }
+            html if html.contains(r#"status":"UNPLAYABLE"#) => {
+                info!("{} Stream is copyrighted", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Copyrighted),
+                    })),
+                    PlayabilityStatus::Copyrighted,
+                )
+            }
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => {
+                info!("{} Stream is private", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Privated),
+                    })),
+                    PlayabilityStatus::Privated,
+                )
+            }
+            html if html.contains(r#"status":"ERROR"#) => {
+                info!("{} Stream is removed", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Removed),
+                    })),
+                    PlayabilityStatus::Removed,
+                )
+            }
+            html if html.contains(r#"status":"OK"#) => match html {
+                html if html.contains("\"isUnlisted\":true") => {
+                    info!("{} Stream is unlisted", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::Unlisted),
+                        })),
+                        PlayabilityStatus::Unlisted,
+                    )
+                }
+                html if html.contains("hlsManifestUrl") => {
+                    info!("{} Stream is live", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::OnLive),
+                        })),
+                        PlayabilityStatus::OnLive,
+                    )
+                }
+                _ => {
+                    info!("{} Stream is available", task_name);
+                    (
+                        (Message::ToNotify(Notification {
+                            task: task.clone(),
+                            status: Status::Playability(PlayabilityStatus::Ok),
+                        })),
+                        PlayabilityStatus::Ok,
+                    )
+                }
+            },
+            html if html.contains(r#"status":"LIVE_STREAM_OFFLINE"#) => {
+                info!("{} Stream is offline", task_name);
+                (
+                    (Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Offline),
+                    })),
+                    PlayabilityStatus::Offline,
+                )
+            }
+            html if html.contains(r#"status":"LOGIN_REQUIRED"#) => {
+                info!("{} Stream requires login", task_name);
+                (
+                    Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::LoginRequired),
+                    }),
+                    PlayabilityStatus::LoginRequired,
+                )
+            }
+            _ => {
+                info!("{} Unknown status", task_name);
+                (
+                    Message::ToNotify(Notification {
+                        task: task.clone(),
+                        status: Status::Playability(PlayabilityStatus::Unknown),
+                    }),
+                    PlayabilityStatus::Unknown,
+                )
+            }
+        };
+        bus.send(message).await?;
+
+        let mut video = String::new();
+        let mut video_quality = String::new();
+        let mut audio = String::new();
+        let mut audio_quality = String::new();
+
+        for itag in PRIORITY.video {
+            match map_itag_url.get(&itag.to_string()) {
+                Some(url) => {
+                    video = url.to_string();
+                    video_quality = itag.to_string()
+                }
+                _ => (),
+            }
+        }
+        if video == String::new() {
+            warn!("{} got empty video sources.", task.video_id)
+        }
+        for itag in PRIORITY.audio {
+            match map_itag_url.get(&itag.to_string()) {
+                Some(url) => {
+                    audio = url.to_string();
+                    audio_quality = itag.to_string()
+                }
+                _ => (),
+            }
+        }
+        if audio == String::new() {
+            warn!("{} got empty audio sources.", task.video_id)
+        }
+
+        status.video_quality = Some(video_quality);
+        status.audio_quality = Some(audio_quality);
+
+        status.playability = Some(playability_status);
+        // Getting thumbnail
+        let image_data = client.get(&url).send().await?.bytes().await?;
+        let thumbnail = format!("data:image/jpeg;base64,{}", BASE64URL.encode(&image_data));
+
+        let metadata = VideoInfo {
+            title: task.title.to_owned(),
+            id: task.video_id.to_owned(),
+            thumbnail,
+            description,
+            thumbnail_url: task.video_picture.to_owned(),
+            channel_name: task.channel_name.to_owned(),
+            channel_url: format!(
+                "https://www.youtube.com/channel/{}",
+                task.channel_id.to_owned()
+            ),
+        };
+        let json = JsonSchema::new(video, audio, metadata);
+        let json_string = serde_json::to_string_pretty(&json).expect("Failed to serialize JSON");
+        tokio::fs::write(
+            format!("{}/{}.json", &task.output_directory, &task.video_id),
+            json_string.as_bytes(),
+        )
+        .await?;
+        status.state = JsonState::Finished;
+        bus.send(Message::MetadataStatus(MetadataStatus {
+            task: task.clone(),
+            status: status.clone(),
+        }))
+        .await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Module for Json {
+    fn new(_config: Arc<RwLock<Config>>) -> Self {
+        Self {}
+    }
+
+    async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
+        // Listen for new messages
+        while let Some(message) = rx.recv().await {
+            match message {
+                Message::ToRecord(task) => {
+                    debug!("Spawning thread for task: {:?}", task);
+                    let mut tx = tx.clone();
+                    let client = Client::builder()
+                        .user_agent(APP_USER_AGENT)
+                        .build()
+                        .expect("Failed to create client");
+                    tokio::spawn(async move {
+                        if let Err(e) = Json::get(client, task, &mut tx).await {
+                            error!("Failed to get json for task: {:?}", e);
+                        };
+                    });
+                }
+                _ => (),
+            }
+        }
+
+        debug!("JSON module finished");
+        Ok(())
+    }
+}
+
+/// The current state of ytarchive.
+#[derive(Debug, Clone, Serialize, TS)]
+pub struct JsonStatus {
+    state: JsonState,
+    playability: Option<PlayabilityStatus>,
+    video_quality: Option<String>,
+    audio_quality: Option<String>,
+    output_file: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub enum JsonState {
+    Idle,
+    Finished,
+}
+
+impl JsonStatus {
+    pub fn new() -> Self {
+        Self {
+            state: JsonState::Idle,
+            playability: None,
+            video_quality: None,
+            audio_quality: None,
+            output_file: None,
+        }
+    }
+}
 
 pub struct YTArchive {
     config: Arc<RwLock<Config>>,
@@ -185,12 +534,13 @@ impl YTArchive {
             status.parse_line(&line);
 
             // Push the current status to the bus
-            if let Err(_) = bus
+            if (bus
                 .send(Message::RecordingStatus(RecordingStatus {
                     task: task.clone(),
                     status: status.clone(),
                 }))
-                .await
+                .await)
+                .is_err()
             {
                 break;
             }
@@ -205,21 +555,21 @@ impl YTArchive {
                     info!("{} Waiting for stream to go live", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Waiting,
+                        status: Status::Task(TaskStatus::Waiting),
                     }))
                 }
                 YTAState::Recording => {
                     info!("{} Recording started", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Recording,
+                        status: Status::Task(TaskStatus::Recording),
                     }))
                 }
                 YTAState::Finished => {
                     info!("{} Recording finished", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Done,
+                        status: Status::Task(TaskStatus::Done),
                     }))
                 }
                 YTAState::AlreadyProcessed => {
@@ -230,7 +580,7 @@ impl YTArchive {
                     info!("{} Recording failed: interrupted", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
-                        status: TaskStatus::Failed,
+                        status: Status::Task(TaskStatus::Failed),
                     }))
                 }
                 _ => None,
@@ -238,7 +588,7 @@ impl YTArchive {
 
             if let Some(message) = message {
                 // Exit the loop if message failed to send
-                if let Err(_) = bus.send(message).await {
+                if (bus.send(message).await).is_err() {
                     break;
                 }
             }

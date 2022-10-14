@@ -1,4 +1,4 @@
-use super::{Message, Module, Notification, TaskStatus};
+use super::{Message, Module, Notification, PlayabilityStatus, Status, TaskStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, APP_NAME, APP_USER_AGENT};
 use anyhow::Result;
@@ -83,10 +83,22 @@ impl Module for Discord {
             }
 
             let (title, color) = match status {
-                TaskStatus::Waiting => ("Waiting for Live", 0xebd045),
-                TaskStatus::Recording => ("Recording", 0x58b9ff),
-                TaskStatus::Done => ("Done", 0x45eb45),
-                TaskStatus::Failed => ("Failed", 0xeb4545),
+                Status::Task(TaskStatus::Waiting) => ("Waiting for Live", 0xebd045),
+                Status::Task(TaskStatus::Recording) => ("Recording", 0x58b9ff),
+                Status::Task(TaskStatus::Done) => ("Done", 0x45eb45),
+                Status::Task(TaskStatus::Failed) => ("Failed", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Ok) => ("Available", 0x45eb45),
+                Status::Playability(PlayabilityStatus::MembersOnly) => ("Members Only", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Copyrighted) => ("Copyrighted", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Removed) => ("Removed", 0xeb4545),
+                Status::Playability(PlayabilityStatus::LoginRequired) => {
+                    ("Login Required", 0xeb4545)
+                }
+                Status::Playability(PlayabilityStatus::Unlisted) => ("Unlisted", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Unknown) => ("Unknown", 0xeb4545),
+                Status::Playability(PlayabilityStatus::OnLive) => ("Live", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Privated) => ("Privated", 0xeb4545),
+                Status::Playability(PlayabilityStatus::Offline) => ("Offline", 0xeb4545),
             };
             let timestamp = chrono::Utc::now().to_rfc3339();
 
@@ -105,7 +117,7 @@ impl Module for Discord {
                     footer: DiscordEmbedFooter {
                         text: APP_NAME.into(),
                     },
-                    timestamp: timestamp,
+                    timestamp,
                     thumbnail: DiscordEmbedThumbnail {
                         url: task.video_picture,
                     },

@@ -1,9 +1,8 @@
 use super::{Message, Module, Task};
 use crate::{config, msgbus::BusTx, youtube, APP_USER_AGENT};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use futures::stream::{self, Stream, StreamExt};
-use lazy_static::lazy_static;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{
@@ -145,7 +144,7 @@ impl Module for RSS {
             let err = self
                 .run_loop(scraped.clone())
                 .await
-                .map(|task| tx.send(Message::ToRecord(task.clone())))
+                .map(|task| tx.send(Message::ToRecord(task)))
                 .buffer_unordered(4)
                 .collect::<Vec<Result<_, _>>>()
                 .await

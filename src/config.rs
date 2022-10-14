@@ -1,5 +1,5 @@
-use crate::module::TaskStatus;
 use anyhow::{anyhow, Result};
+use crate::module::Status;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -50,7 +50,7 @@ pub struct NotifierConfig {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct NotifierDiscordConfig {
     pub webhook_url: String,
-    pub notify_on: Vec<TaskStatus>,
+    pub notify_on: Vec<Status>,
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]

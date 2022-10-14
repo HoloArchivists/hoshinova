@@ -27,9 +27,30 @@ import { useQueryConfig } from '../api/config';
 import { YTAState } from '../bindings/YTAState';
 import { Task } from '../bindings/Task';
 
-const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
+const PlayabilityBadge = ({ state }: { state: State }) => (
+  <Badge
+    color={
+      state === 'Live'
+        ? 'pink'
+        : state === 'Members Only' || state === 'Login Required'
+        ? 'grape'
+        : state === 'Unlisted'
+        ? 'indigo'
+        : state === 'Copyrighted'
+        ? 'cyan'
+        : state === 'Removed' || state === 'Privated'
+        ? 'orange'
+        : state === 'OK' || state === 'Offline'
+        ? 'gray'
+        : 'violet'
+    }
+    variant="filled"
+  >
+    {stateString(state)}
+  </Badge>
+);
 
-const TaskStateBadge = ({ state }: { state: YTAState }) => (
+const TaskStateBadge = ({ state }: { state: State }) => (
   <Badge
     color={
       state === 'Recording'

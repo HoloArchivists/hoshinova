@@ -108,6 +108,7 @@ async fn main() -> Result<()> {
     let config = Arc::new(RwLock::new(config));
     let h_scraper = run_module!(bus, module::scraper::RSS::new(config.clone()));
     let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
+    let h_json = run_module!(bus, module::recorder::Json::new(config.clone()));
     let h_notifier = run_module!(bus, module::notifier::Discord::new(config.clone()));
     let h_webserver = run_module!(bus, module::web::WebServer::new(config.clone()));
 
@@ -129,6 +130,7 @@ async fn main() -> Result<()> {
     futures::try_join!(
         h_scraper,
         h_recorder,
+        h_json,
         h_notifier,
         h_signal,
         h_bus,
