@@ -186,6 +186,11 @@ const TasksPage = () => {
           There's nothing here yet. Maybe add some more channels to spice things
           up!
         </Text>
+        <Group py="md">
+          <Button leftIcon={<IconPlus size={18} />} onClick={handleAddVideo}>
+            Add video
+          </Button>
+        </Group>
       </Container>
     );
 
