@@ -15,6 +15,9 @@ delay_start = "1s"
 
 [scraper.rss]
 poll_interval = "30s"
+# Ignore videos older than this. Helps prevent hitting the rate limit on startup
+# if a lot of older non-live videos match your filters.
+ignore_older_than = "24h"
 
 [notifier.discord]
 webhook_url = "https://discordapp.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz"

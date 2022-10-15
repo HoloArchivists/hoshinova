@@ -41,6 +41,9 @@ clap = { version = "3.2.8", features = ["derive"] }
 env_logger = "0.8.4"
 log = "0.4"
 
+[build-dependencies]
+chrono = "0.4.0"
+
 [profile.release]
 lto = true
 strip = true
