@@ -324,6 +324,10 @@ impl Module for YTArchive {
 
                         active_ids.write().await.remove(&video_id);
                     });
+
+                    // Wait a bit before starting the next task
+                    let delay = self.config.read().await.ytarchive.delay_start;
+                    tokio::time::sleep(delay).await;
                 }
                 _ => (),
             }

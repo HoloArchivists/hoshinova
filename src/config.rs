@@ -24,6 +24,14 @@ pub struct YtarchiveConfig {
     pub working_directory: String,
     pub args: Vec<String>,
     pub quality: String,
+    #[serde(with = "humantime_serde")]
+    #[serde(default = "default_delay_start")]
+    #[ts(type = "string")]
+    pub delay_start: std::time::Duration,
+}
+
+fn default_delay_start() -> std::time::Duration {
+    std::time::Duration::from_secs(1)
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
