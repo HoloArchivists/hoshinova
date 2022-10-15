@@ -46,6 +46,14 @@ pub struct ScraperRSSConfig {
     #[serde(with = "humantime_serde")]
     #[ts(type = "string")]
     pub poll_interval: std::time::Duration,
+    #[serde(with = "humantime_serde")]
+    #[serde(default = "default_ignore_older_than")]
+    #[ts(type = "string")]
+    pub ignore_older_than: std::time::Duration,
+}
+
+fn default_ignore_older_than() -> std::time::Duration {
+    std::time::Duration::from_secs(60 * 60 * 24)
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]

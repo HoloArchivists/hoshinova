@@ -12,7 +12,14 @@ mod module;
 mod msgbus;
 mod youtube;
 
-pub static APP_NAME: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
+pub static APP_NAME: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    " v",
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("GIT_HASH_SHORT"),
+    ")"
+);
 pub static APP_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_NAME"),
     "/",
@@ -70,6 +77,8 @@ async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
     info!("{}", APP_NAME);
+    debug!("Git hash: {}", env!("GIT_HASH"));
+    debug!("Built on: {}", env!("BUILD_TIME"));
 
     // Parse command line arguments
     let args = Args::parse();

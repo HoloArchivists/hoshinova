@@ -1,9 +1,8 @@
 use super::{Message, Module, Task};
 use crate::{config, msgbus::BusTx, youtube, APP_USER_AGENT};
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::stream::{self, Stream, StreamExt};
-use lazy_static::lazy_static;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{
@@ -32,6 +31,7 @@ struct FeedEntry {
     title: String,
     author: Author,
     group: MediaGroup,
+    updated: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +57,11 @@ impl RSS {
     ) -> Result<impl Stream<Item = Task>> {
         debug!("Fetching RSS for {}", channel.name);
 
+        // Get config
+        let max_age =
+            chrono::Duration::from_std(self.config.read().await.scraper.rss.ignore_older_than)
+                .context("Failed to convert ignore_older_than to chrono::Duration")?;
+
         // Fetch the RSS feed
         let url = format!(
             "https://www.youtube.com/feeds/videos.xml?channel_id={}",
@@ -76,6 +81,7 @@ impl RSS {
                     .iter()
                     .any(|filter| !filter.is_match(&entry.title))
                     || scraped.contains(&entry.video_id)
+                    || entry.updated < chrono::Utc::now() - max_age
                 {
                     None
                 } else {
