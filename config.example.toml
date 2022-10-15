@@ -9,6 +9,9 @@ args = [
   "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
 ]
 quality = "best"
+# Delay between starting ytarchive processes. Increase this number if you get
+# rate limited by YouTube.
+delay_start = "1s"
 
 [scraper.rss]
 poll_interval = "30s"
