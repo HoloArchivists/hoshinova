@@ -434,7 +434,7 @@ impl YTAStatus {
                 .ok()
                 .map(|d| d.into());
             self.state = YTAState::Waiting(date);
-        } else if line.starts_with("Stream is ") {
+        } else if line.starts_with("Stream is ") || line.starts_with("Waiting for stream") {
             self.state = YTAState::Waiting(None);
         } else if line.starts_with("Muxing final file") {
             self.state = YTAState::Muxing;
@@ -449,6 +449,10 @@ impl YTAStatus {
             self.output_file = Some(strip_ansi(&line[12..]));
         } else if line.contains("User Interrupt") {
             self.state = YTAState::Interrupted;
+        } else if line.trim().is_empty() || line.contains("Loaded cookie file") {
+            // Ignore
+        } else {
+            warn!("Unknown ytarchive output: {}", line);
         }
     }
 }

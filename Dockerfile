@@ -6,7 +6,7 @@ RUN yarn install
 
 # Create base image for building Rust
 FROM rust:1.62-alpine AS rust-build-image
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev git
 
 # Cache dependencies
 FROM rust-build-image AS rust-deps
