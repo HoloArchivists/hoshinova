@@ -1,5 +1,5 @@
 use actix_web::http::Uri;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -34,9 +34,7 @@ pub async fn fetch_initial_player_response(
     url: &str,
 ) -> Result<InitialPlayerResponse> {
     // Parse URL
-    let uri = url
-        .parse::<Uri>()
-        .map_err(|e| anyhow!("Invalid URL: {}", e))?;
+    let uri = url.parse::<Uri>().context("Failed to parse URL")?;
 
     // Make sure it's a supported URL
     let host = uri.host().ok_or(anyhow!("Invalid URL"))?;
@@ -49,12 +47,12 @@ pub async fn fetch_initial_player_response(
         .get(url)
         .send()
         .await
-        .map_err(|e| anyhow!("Failed to fetch video URL: {}", e))?
+        .context("Failed to fetch video page")?
         .error_for_status()
-        .map_err(|e| anyhow!("Failed to fetch video URL: {}", e))?
+        .context("Video page returned error")?
         .text()
         .await
-        .map_err(|e| anyhow!("Failed to fetch video URL: {}", e))?;
+        .context("Failed to read video page response")?;
 
     // Parse page contents
     lazy_static::lazy_static! {
@@ -70,8 +68,8 @@ pub async fn fetch_initial_player_response(
         .as_str();
 
     // Parse the initial player response
-    let ipr: InitialPlayerResponse = serde_json::from_str(ipr)
-        .map_err(|e| anyhow!("Failed to parse the initial player response: {}", e))?;
+    let ipr: InitialPlayerResponse =
+        serde_json::from_str(ipr).context("Failed to parse the initial player response")?;
 
     Ok(ipr)
 }

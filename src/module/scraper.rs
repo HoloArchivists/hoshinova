@@ -8,6 +8,7 @@ use serde::Deserialize;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::sync::{mpsc, RwLock};
 
@@ -68,8 +69,15 @@ impl RSS {
             "https://www.youtube.com/feeds/videos.xml?channel_id={}",
             channel.id
         );
-        let res = self.client.get(&url).send().await?;
-        let feed: RSSFeed = quick_xml::de::from_slice(&res.bytes().await?)?;
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch RSS feed")?;
+        let feed: RSSFeed =
+            quick_xml::de::from_slice(&res.bytes().await.context("Failed to read RSS feed body")?)
+                .context("Failed to parse RSS feed")?;
 
         // Find matching videos
         let tasks: Vec<Task> = feed
@@ -84,7 +92,8 @@ impl RSS {
                     || !channel.filters.iter().any(|filter| {
                         // Or if the video doesn't match the filters
                         filter.is_match(&entry.title)
-                            || (channel.match_description && filter.is_match(&entry.description))
+                            || (channel.match_description
+                                && filter.is_match(&entry.group.description))
                     })
                 {
                     return None;
@@ -117,7 +126,7 @@ impl RSS {
         stream::iter(config.channel.clone())
             .map(move |channel| self.run_one(scraped.clone(), channel))
             .buffer_unordered(4)
-            .filter_map(|one| async { one.map_err(|e| error!("Failed to run RSS: {}", e)).ok() })
+            .filter_map(|one| async { one.map_err(|e| error!("Failed to run RSS: {:?}", e)).ok() })
             .flatten()
     }
 
@@ -129,8 +138,11 @@ impl RSS {
                 continue;
             }
 
-            channel.picture_url =
-                Some(youtube::channel::fetch_picture_url(self.client.clone(), &channel.id).await?);
+            channel.picture_url = Some(
+                youtube::channel::fetch_picture_url(self.client.clone(), &channel.id)
+                    .await
+                    .context("Failed to fetch channel picture URL")?,
+            );
         }
         Ok(())
     }
@@ -141,6 +153,7 @@ impl Module for RSS {
     fn new(config: Arc<RwLock<config::Config>>) -> Self {
         let client = Client::builder()
             .user_agent(APP_USER_AGENT)
+            .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create client");
         Self { config, client }

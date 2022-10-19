@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use lazy_static::lazy_static;
 use reqwest::Client;
 
@@ -9,10 +9,10 @@ pub async fn fetch_picture_url(client: Client, channel_id: &str) -> Result<Strin
         .get(&channel_url)
         .send()
         .await
-        .map_err(|e| anyhow!("Error fetching channel page: {}", e))?
+        .context("Failed to fetch channel page")?
         .text()
         .await
-        .map_err(|e| anyhow!("Error fetching channel page: {}", e))?;
+        .context("Failed to read channel page")?;
 
     // Find the picture URL
     lazy_static! {

@@ -1,5 +1,5 @@
 use crate::module::TaskStatus;
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -105,7 +105,9 @@ impl Config {
     /// Reads the config file and replaces the current config with the new one.
     pub async fn reload(&mut self) -> Result<()> {
         info!("Reloading config");
-        let config = load_config(&self.config_path).await?;
+        let config = load_config(&self.config_path)
+            .await
+            .context("Failed to load config")?;
         *self = config;
         Ok(())
     }
@@ -124,13 +126,13 @@ impl Config {
     pub async fn set_source_toml(&mut self, source_toml: &str) -> Result<()> {
         // Try to deserialize the provided TOML string. If it fails, we don't
         // want to write it to the config file.
-        let _: Config = toml::from_str(source_toml)
-            .map_err(|e| anyhow!("Failed to deserialize provided TOML: {}", e))?;
+        let _: Config =
+            toml::from_str(source_toml).context("Failed to deserialize provided TOML")?;
 
         // Write the provided TOML string to the config file.
         tokio::fs::write(&self.config_path, source_toml)
             .await
-            .map_err(|e| anyhow!("Failed to write to config file: {}", e))?;
+            .context("Failed to write config file")?;
 
         // Reload the config.
         self.reload().await

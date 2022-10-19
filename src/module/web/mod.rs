@@ -4,7 +4,7 @@ use crate::{
     msgbus::BusTx,
 };
 use actix_web::{web::Data, App, HttpServer};
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -99,8 +99,8 @@ impl Module for WebServer {
                 .configure(handler::configure)
         })
         .disable_signals()
-        .bind(ws_cfg.bind_address)
-        .map_err(|e| anyhow!("Failed to bind to address: {}", e))?
+        .bind(ws_cfg.bind_address.clone())
+        .with_context(|| format!("Failed to bind webserver to {}", ws_cfg.bind_address))?
         .run();
 
         let handle = ws.handle();
@@ -109,12 +109,12 @@ impl Module for WebServer {
             ret = ws => {
                 // Close the receiver if the webserver stops
                 rx.close();
-                ret.map_err(|e| anyhow!("Failed to start webserver: {}", e))
+                ret.context("Webserver stopped unexpectedly")
             },
             ret = busll => {
                 // Stop the webserver if the bus loop stops
                 handle.stop(true).await;
-                ret.map_err(|e| anyhow!("Bus loop crashed: {}", e))
+                ret.context("Bus loop stopped unexpectedly")
             }
         }
     }
