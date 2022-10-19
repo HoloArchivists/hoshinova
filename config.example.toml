@@ -6,6 +6,7 @@ executable_path = "ytarchive"
 working_directory = "temp"
 args = [
   "--vp9", "--thumbnail", "--add-metadata", "--threads", "4",
+  "--retry-stream", "30",
   "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
 ]
 quality = "best"

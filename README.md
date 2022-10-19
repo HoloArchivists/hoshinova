@@ -74,7 +74,7 @@ docker run -d \
 Or with `docker-compose`:
 
 ```yaml
-version: '3'
+version: "3"
 services:
   hoshinova:
     image: ghcr.io/holoarchivists/hoshinova:main
@@ -100,9 +100,11 @@ executable_path = "ytarchive"
 working_directory = "temp"
 args = [
   "--vp9", "--thumbnail", "--add-metadata", "--threads", "4",
+  "--retry-stream", "30",
   "--output", "%(upload_date)s %(title)s [%(channel)s] (%(id)s)"
 ]
 quality = "best"
+delay_start = "1s"
 ```
 
 The default configuration should work for most cases. If you don't have
@@ -118,16 +120,25 @@ too, if you need to use cookies, change the number of threads, etc. Just note
 that each argument needs to be a separate item in the list (for example,
 `["--threads", "4"]` instead of `["--threads 4"]`).
 
+The `delay_start` parameter can also be adjusted if you are starting a lot of
+downloads simultaneously. The parameter add some delay between launching
+ytarchive instances.
+
 ### scrapers and notifiers
 
 ```toml
 [scraper.rss]
 poll_interval = "30s"
+ignore_older_than = "24h"
 ```
 
 Right now there's only an RSS scraper. More may be added in the future. You can
 change the `poll_interval`, which specifies how long to wait between checking
 the RSS feeds of each channel.
+
+You can use the `ignore_older_than` parameter to skip checking videos that are
+older than the specified duration. This is useful if your filters match a lot of
+videos and don't want to hit rate limits during startup.
 
 ```toml
 [notifier.discord]
