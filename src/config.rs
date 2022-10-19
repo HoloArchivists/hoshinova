@@ -83,9 +83,15 @@ pub struct ChannelConfig {
     #[serde(with = "serde_regex")]
     #[ts(type = "string[]")]
     pub filters: Vec<regex::Regex>,
+    #[serde(default = "default_false")]
+    pub match_description: bool,
     pub outpath: String,
     /// If not present, will be fetched during runtime.
     pub picture_url: Option<String>,
+}
+
+fn default_false() -> bool {
+    false
 }
 
 pub async fn load_config(path: &str) -> Result<Config> {

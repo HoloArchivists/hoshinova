@@ -42,6 +42,7 @@ struct Author {
 #[derive(Deserialize)]
 struct MediaGroup {
     thumbnail: Thumbnail,
+    description: String,
 }
 
 #[derive(Deserialize)]
@@ -76,26 +77,32 @@ impl RSS {
             .iter()
             .filter_map(move |entry| {
                 let mut scraped = scraped.lock().unwrap();
-                if channel
-                    .filters
-                    .iter()
-                    .any(|filter| !filter.is_match(&entry.title))
-                    || scraped.contains(&entry.video_id)
+
+                // Skip if video has already been scraped, or if it's too old
+                if scraped.contains(&entry.video_id)
                     || entry.updated < chrono::Utc::now() - max_age
-                {
-                    None
-                } else {
-                    scraped.insert(entry.video_id.to_owned());
-                    Some(Task {
-                        title: entry.title.to_owned(),
-                        video_id: entry.video_id.to_owned(),
-                        video_picture: entry.group.thumbnail.url.to_owned(),
-                        channel_name: entry.author.name.to_owned(),
-                        channel_id: entry.channel_id.to_owned(),
-                        channel_picture: channel.picture_url.clone(),
-                        output_directory: channel.outpath.clone(),
+                    || !channel.filters.iter().any(|filter| {
+                        // Or if the video doesn't match the filters
+                        filter.is_match(&entry.title)
+                            || (channel.match_description && filter.is_match(&entry.description))
                     })
+                {
+                    return None;
                 }
+
+                // Add to scraped set
+                scraped.insert(entry.video_id.clone());
+
+                // Return the task
+                Some(Task {
+                    title: entry.title.to_owned(),
+                    video_id: entry.video_id.to_owned(),
+                    video_picture: entry.group.thumbnail.url.to_owned(),
+                    channel_name: entry.author.name.to_owned(),
+                    channel_id: entry.channel_id.to_owned(),
+                    channel_picture: channel.picture_url.clone(),
+                    output_directory: channel.outpath.clone(),
+                })
             })
             .collect();
 
