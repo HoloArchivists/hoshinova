@@ -4,6 +4,7 @@ use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures::FutureExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Serialize;
@@ -17,6 +18,7 @@ use std::{
         Arc,
     },
 };
+use tokio::select;
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::{mpsc, RwLock},
@@ -291,6 +293,12 @@ impl YTArchive {
     }
 }
 
+struct SpawnTask {
+    task: Task,
+    cfg: Config,
+    tx: BusTx<Message>,
+}
+
 #[async_trait]
 impl Module for YTArchive {
     fn new(config: Arc<RwLock<Config>>) -> Self {
@@ -299,39 +307,65 @@ impl Module for YTArchive {
     }
 
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
-        // Listen for new messages
-        while let Some(message) = rx.recv().await {
-            match message {
-                Message::ToRecord(task) => {
-                    // Check if the task is already active
-                    if self.active_ids.read().await.contains(&task.video_id) {
-                        warn!("Task {} is already active, skipping", task.video_id);
-                        continue;
-                    }
+        // Create a spawn queue
+        let (spawn_tx, mut spawn_rx) = mpsc::unbounded_channel::<SpawnTask>();
 
-                    debug!("Spawning thread for task: {:?}", task);
-                    let mut tx = tx.clone();
-                    let cfg = self.config.read().await;
-                    let cfg = cfg.clone();
-                    let active_ids = self.active_ids.clone();
-                    tokio::spawn(async move {
-                        let video_id = task.video_id.clone();
-                        active_ids.write().await.insert(video_id.clone());
+        // Future to handle spawning new tasks
+        let active_ids = self.active_ids.clone();
+        let f_spawner = async move {
+            while let Some(mut task) = spawn_rx.recv().await {
+                let active_ids = active_ids.clone();
+                let delay = task.cfg.ytarchive.delay_start;
 
-                        if let Err(e) = YTArchive::record(cfg, task, &mut tx).await {
-                            error!("Failed to record task: {:?}", e);
-                        };
+                debug!("Spawning thread for task: {:?}", task.task);
+                tokio::spawn(async move {
+                    let video_id = task.task.video_id.clone();
+                    active_ids.write().await.insert(video_id.clone());
 
-                        active_ids.write().await.remove(&video_id);
-                    });
+                    if let Err(e) = YTArchive::record(task.cfg, task.task, &mut task.tx).await {
+                        error!("Failed to record task: {:?}", e);
+                    };
 
-                    // Wait a bit before starting the next task
-                    let delay = self.config.read().await.ytarchive.delay_start;
-                    tokio::time::sleep(delay).await;
-                }
-                _ => (),
+                    active_ids.write().await.remove(&video_id);
+                });
+
+                // Wait a bit before starting the next task
+                tokio::time::sleep(delay).await;
             }
-        }
+
+            Ok::<(), anyhow::Error>(())
+        };
+
+        // Future to handle incoming messages
+        let f_message = async move {
+            while let Some(message) = rx.recv().await {
+                match message {
+                    Message::ToRecord(task) => {
+                        // Check if the task is already active
+                        if self.active_ids.read().await.contains(&task.video_id) {
+                            warn!("Task {} is already active, skipping", task.video_id);
+                            continue;
+                        }
+
+                        debug!("Adding task to spawn queue: {:?}", task);
+                        let tx = tx.clone();
+                        let cfg = self.config.read().await;
+                        let cfg = cfg.clone();
+
+                        if let Err(_) = spawn_tx.send(SpawnTask { task, cfg, tx }) {
+                            debug!("Spawn queue closed, exiting");
+                            break;
+                        }
+                    }
+                    _ => (),
+                }
+            }
+
+            Ok::<(), anyhow::Error>(())
+        };
+
+        // Run the futures
+        tokio::try_join!(f_spawner, f_message)?;
 
         debug!("YTArchive module finished");
         Ok(())
