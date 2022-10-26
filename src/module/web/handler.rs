@@ -60,7 +60,8 @@ async fn post_task(
     let client = reqwest::Client::new();
 
     // Make sure the video URL is valid
-    let url = youtube::URL::parse(&taskreq.video_url).map_err(|e| ErrorBadRequest(e))?;
+    let url =
+        youtube::URL::parse(&taskreq.video_url).map_err(|e| ErrorBadRequest(format!("{:?}", e)))?;
     let video_id = url
         .video_id()
         .ok_or(ErrorBadRequest(anyhow!("Not a video URL")))?;
@@ -69,7 +70,7 @@ async fn post_task(
     // Fetch video details
     let ipr = youtube::video::fetch_initial_player_response(client.clone(), &video_url)
         .await
-        .map_err(|e| ErrorInternalServerError(e))?;
+        .map_err(|e| ErrorInternalServerError(format!("{:?}", e)))?;
 
     // Get the best thumbnail
     let mut thumbs = ipr.video_details.thumbnail.thumbnails;
@@ -81,7 +82,7 @@ async fn post_task(
         youtube::channel::fetch_picture_url(client, &ipr.video_details.channel_id)
             .await
             .map_err(|e| {
-                ErrorInternalServerError(anyhow!("Failed to fetch channel picture: {}", e))
+                ErrorInternalServerError(anyhow!("Failed to fetch channel picture: {:?}", e))
             })?;
 
     // Create the task
@@ -98,7 +99,7 @@ async fn post_task(
     // Broadcast it to the bus
     tx.send(Message::ToRecord(task))
         .await
-        .map_err(|e| ErrorInternalServerError(e))?;
+        .map_err(|e| ErrorInternalServerError(format!("{:?}", e)))?;
 
     Ok(HttpResponse::Accepted().finish())
 }
@@ -120,7 +121,7 @@ async fn reload_config(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result<i
         .await
         .reload()
         .await
-        .map_err(|e| ErrorInternalServerError(e))?;
+        .map_err(|e| ErrorInternalServerError(format!("{:?}", e)))?;
     Ok(HttpResponse::Ok().json("ok"))
 }
 
@@ -132,7 +133,7 @@ async fn get_config_toml(config: Data<Arc<RwLock<Config>>>) -> actix_web::Result
             .await
             .get_source_toml()
             .await
-            .map_err(|e| ErrorInternalServerError(e))?,
+            .map_err(|e| ErrorInternalServerError(format!("{:?}", e)))?,
     ))
 }
 
@@ -141,13 +142,13 @@ async fn put_config_toml(
     config: Data<Arc<RwLock<Config>>>,
     body: web::Bytes,
 ) -> actix_web::Result<impl Responder> {
-    let body = std::str::from_utf8(&body).map_err(|e| ErrorBadRequest(e))?;
+    let body = std::str::from_utf8(&body).map_err(|e| ErrorBadRequest(format!("{:?}", e)))?;
     config
         .write()
         .await
         .set_source_toml(body)
         .await
-        .map_err(|e| ErrorBadRequest(e))?;
+        .map_err(|e| ErrorBadRequest(format!("{:?}", e)))?;
     Ok(HttpResponse::Ok().json("ok"))
 }
 

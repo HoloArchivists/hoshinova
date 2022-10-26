@@ -54,6 +54,9 @@ const ConfigPage = () => {
             title: 'Error updating configuration',
             message,
             color: 'red',
+            styles: (_) => ({
+              description: { whiteSpace: 'pre' },
+            }),
           });
           console.error(err);
         },

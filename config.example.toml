@@ -33,6 +33,9 @@ bind_address = "0.0.0.0:1104"
 id = "UCP0BspO_AMEe3aQqqpo89Dg"
 name = "Moona Hoshinova"
 filters = ["(?i)MoonUtau|Karaoke|Archive"]
+# By default, filters will only match the video title. Set this to true if you
+# want them to also match the video description.
+match_description = false
 outpath = "./videos/moona"
 
 # Add more channels...
@@ -40,4 +43,5 @@ outpath = "./videos/moona"
 # id = "..."
 # name = "..."
 # filters = [...]
+# match_description = ...
 # outpath = "..."
