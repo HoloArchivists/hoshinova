@@ -1,7 +1,7 @@
 use super::{Message, Module, Notification, Task, TaskStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
@@ -36,12 +36,12 @@ impl YTArchive {
         let cfg = cfg.ytarchive;
         tokio::fs::create_dir_all(&cfg.working_directory)
             .await
-            .map_err(|e| anyhow!("Failed to create working directory: {}", e))?;
+            .context("Failed to create working directory")?;
 
         // Ensure the output directory exists
         tokio::fs::create_dir_all(&task.output_directory)
             .await
-            .map_err(|e| anyhow!("Failed to create output directory: {:?}", e))?;
+            .context("Failed to create output directory")?;
 
         // Construct the command line arguments
         let mut args = cfg.args.clone();
@@ -65,7 +65,7 @@ impl YTArchive {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| anyhow!("Failed to start process: {}", e))?;
+            .context("Failed to start ytarchive")?;
 
         // Grab stdout/stderr byte iterators
         let mut stdout = BufReader::new(
@@ -276,14 +276,14 @@ impl YTArchive {
 
             // Copy the file into the output directory
             fs::copy(frompath, &destpath)
-                .map_err(|e| anyhow!("Failed to copy file to output: {:?}", e))?;
+                .with_context(|| format!("Failed to copy file to output: {:?}", destpath))?;
             info!(
                 "{} Copied output file to {}, removing original",
                 task_name,
                 destpath.display(),
             );
             fs::remove_file(frompath)
-                .map_err(|e| anyhow!("Failed to remove original file: {:?}", e))?;
+                .with_context(|| format!("Failed to remove original file: {:?}", frompath))?;
         }
 
         info!("{} Moved output file to {}", task_name, destpath.display());

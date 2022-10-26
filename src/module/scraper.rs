@@ -8,6 +8,7 @@ use serde::Deserialize;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::sync::{mpsc, RwLock};
 
@@ -42,6 +43,7 @@ struct Author {
 #[derive(Deserialize)]
 struct MediaGroup {
     thumbnail: Thumbnail,
+    description: String,
 }
 
 #[derive(Deserialize)]
@@ -67,8 +69,15 @@ impl RSS {
             "https://www.youtube.com/feeds/videos.xml?channel_id={}",
             channel.id
         );
-        let res = self.client.get(&url).send().await?;
-        let feed: RSSFeed = quick_xml::de::from_slice(&res.bytes().await?)?;
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch RSS feed")?;
+        let feed: RSSFeed =
+            quick_xml::de::from_slice(&res.bytes().await.context("Failed to read RSS feed body")?)
+                .context("Failed to parse RSS feed")?;
 
         // Find matching videos
         let tasks: Vec<Task> = feed
@@ -76,26 +85,33 @@ impl RSS {
             .iter()
             .filter_map(move |entry| {
                 let mut scraped = scraped.lock().unwrap();
-                if channel
-                    .filters
-                    .iter()
-                    .any(|filter| !filter.is_match(&entry.title))
-                    || scraped.contains(&entry.video_id)
+
+                // Skip if video has already been scraped, or if it's too old
+                if scraped.contains(&entry.video_id)
                     || entry.updated < chrono::Utc::now() - max_age
-                {
-                    None
-                } else {
-                    scraped.insert(entry.video_id.to_owned());
-                    Some(Task {
-                        title: entry.title.to_owned(),
-                        video_id: entry.video_id.to_owned(),
-                        video_picture: entry.group.thumbnail.url.to_owned(),
-                        channel_name: entry.author.name.to_owned(),
-                        channel_id: entry.channel_id.to_owned(),
-                        channel_picture: channel.picture_url.clone(),
-                        output_directory: channel.outpath.clone(),
+                    || !channel.filters.iter().any(|filter| {
+                        // Or if the video doesn't match the filters
+                        filter.is_match(&entry.title)
+                            || (channel.match_description
+                                && filter.is_match(&entry.group.description))
                     })
+                {
+                    return None;
                 }
+
+                // Add to scraped set
+                scraped.insert(entry.video_id.clone());
+
+                // Return the task
+                Some(Task {
+                    title: entry.title.to_owned(),
+                    video_id: entry.video_id.to_owned(),
+                    video_picture: entry.group.thumbnail.url.to_owned(),
+                    channel_name: entry.author.name.to_owned(),
+                    channel_id: entry.channel_id.to_owned(),
+                    channel_picture: channel.picture_url.clone(),
+                    output_directory: channel.outpath.clone(),
+                })
             })
             .collect();
 
@@ -110,7 +126,7 @@ impl RSS {
         stream::iter(config.channel.clone())
             .map(move |channel| self.run_one(scraped.clone(), channel))
             .buffer_unordered(4)
-            .filter_map(|one| async { one.map_err(|e| error!("Failed to run RSS: {}", e)).ok() })
+            .filter_map(|one| async { one.map_err(|e| error!("Failed to run RSS: {:?}", e)).ok() })
             .flatten()
     }
 
@@ -122,8 +138,11 @@ impl RSS {
                 continue;
             }
 
-            channel.picture_url =
-                Some(youtube::channel::fetch_picture_url(self.client.clone(), &channel.id).await?);
+            channel.picture_url = Some(
+                youtube::channel::fetch_picture_url(self.client.clone(), &channel.id)
+                    .await
+                    .context("Failed to fetch channel picture URL")?,
+            );
         }
         Ok(())
     }
@@ -134,6 +153,7 @@ impl Module for RSS {
     fn new(config: Arc<RwLock<config::Config>>) -> Self {
         let client = Client::builder()
             .user_agent(APP_USER_AGENT)
+            .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create client");
         Self { config, client }
