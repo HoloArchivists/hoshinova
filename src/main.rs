@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     );
 
     // Set up message bus
-    let mut bus = MessageBus::new(16384);
+    let mut bus = MessageBus::new(65_536);
 
     // Set up modules
     macro_rules! run_module {
