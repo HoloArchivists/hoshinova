@@ -63,6 +63,14 @@ impl RSS {
         let max_age =
             chrono::Duration::from_std(self.config.read().await.scraper.rss.ignore_older_than)
                 .context("Failed to convert ignore_older_than to chrono::Duration")?;
+        debug!(
+            "Ignoring videos older than {}",
+            max_age
+                .to_std()
+                .map(humantime::format_duration)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|_| "???".into())
+        );
 
         // Fetch the RSS feed
         let url = format!(
@@ -86,16 +94,25 @@ impl RSS {
             .filter_map(move |entry| {
                 let mut scraped = scraped.lock().unwrap();
 
-                // Skip if video has already been scraped, or if it's too old
-                if scraped.contains(&entry.video_id)
-                    || entry.updated < chrono::Utc::now() - max_age
-                    || !channel.filters.iter().any(|filter| {
-                        // Or if the video doesn't match the filters
-                        filter.is_match(&entry.title)
-                            || (channel.match_description
-                                && filter.is_match(&entry.group.description))
-                    })
-                {
+                if scraped.contains(&entry.video_id) {
+                    // Skip if video has already been scraped
+                    debug!("Skipping {}: already scraped", entry.video_id);
+                    return None;
+                } else if entry.updated < chrono::Utc::now() - max_age {
+                    // Or if the video is too old
+                    debug!(
+                        "Skipping {}: too old ({} < {})",
+                        entry.video_id,
+                        entry.updated,
+                        chrono::Utc::now() - max_age
+                    );
+                    return None;
+                } else if !channel.filters.iter().any(|filter| {
+                    filter.is_match(&entry.title)
+                        || (channel.match_description && filter.is_match(&entry.group.description))
+                }) {
+                    // Or if the video doesn't match the filters
+                    debug!("Skipping {}: doesn't match filters", entry.video_id);
                     return None;
                 }
 

@@ -25,7 +25,6 @@ import { closeAllModals, openModal } from '@mantine/modals';
 import { showNotification } from '@mantine/notifications';
 import { useQueryConfig } from '../api/config';
 import { YTAState } from '../bindings/YTAState';
-import { Task } from '../bindings/Task';
 
 const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
@@ -40,7 +39,7 @@ const TaskStateBadge = ({ state }: { state: YTAState }) => (
         ? 'yellow'
         : state === 'Idle' || state === 'AlreadyProcessed' || state === 'Ended'
         ? 'gray'
-        : state === 'Interrupted'
+        : state === 'Interrupted' || state === 'Errored'
         ? 'red'
         : 'violet'
     }

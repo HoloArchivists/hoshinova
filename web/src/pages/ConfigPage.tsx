@@ -77,7 +77,7 @@ const ConfigPage = () => {
               ? 'Reloading...'
               : isEditable
               ? 'Save and apply'
-              : 'Reload configuration'}
+              : 'Reload from disk'}
           </Button>
           {isEditable ? null : (
             <Text size="sm">
