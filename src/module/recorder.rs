@@ -398,6 +398,7 @@ pub enum YTAState {
     AlreadyProcessed,
     Ended,
     Interrupted,
+    Errored,
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -459,7 +460,27 @@ impl YTAStatus {
             if let Some(x) = parts.next() {
                 self.total_size = Some(strip_ansi(x.trim()));
             };
-        } else if self.version == None && line.starts_with("ytarchive ") {
+            return;
+        } else if line.starts_with("Audio Fragments: ") {
+            self.state = YTAState::Recording;
+            let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
+            if let Some(x) = parts.next() {
+                self.audio_fragments = x.trim().parse().ok();
+            };
+            if let Some(x) = parts.next() {
+                self.total_size = Some(strip_ansi(x.trim()));
+            };
+            return;
+        }
+
+        // New versions of ytarchive prepend a timestamp to the output
+        let line = if self.version == Some("0.3.2".into()) {
+            line[20..].trim()
+        } else {
+            line
+        };
+
+        if self.version == None && line.starts_with("ytarchive ") {
             self.version = Some(strip_ansi(&line[10..]));
         } else if self.video_quality == None && line.starts_with("Selected quality: ") {
             self.video_quality = Some(strip_ansi(&line[18..]));
@@ -483,7 +504,18 @@ impl YTAStatus {
             self.output_file = Some(strip_ansi(&line[12..]));
         } else if line.contains("User Interrupt") {
             self.state = YTAState::Interrupted;
-        } else if line.trim().is_empty() || line.contains("Loaded cookie file") {
+        } else if line.contains("Error retrieving player response")
+            || line.contains("unable to retrieve")
+            || line.contains("error writing the muxcmd file")
+            || line.contains("Something must have gone wrong with ffmpeg")
+            || line.contains("At least one error occurred")
+        {
+            self.state = YTAState::Errored;
+        } else if line.trim().is_empty()
+            || line.contains("Loaded cookie file")
+            || line.starts_with("Video Title: ")
+            || line.starts_with("Channel: ")
+        {
             // Ignore
         } else {
             warn!("Unknown ytarchive output: {}", line);

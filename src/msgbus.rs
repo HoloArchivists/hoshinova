@@ -45,10 +45,10 @@ impl<T: Debug + Clone + Sync> MessageBus<T> {
     /// closed.
     pub async fn start(&mut self) {
         'out: while let Some(BusMessage::Message(msg)) = self.mix_rx.recv().await {
-            for tx in &mut self.mix_tx {
+            for (n, tx) in &mut self.mix_tx.iter().enumerate() {
                 match tx.try_send(msg.clone()) {
                     Err(e) => {
-                        error!("Failed to send message: {}", e);
+                        error!("Failed to send message to queue {}: {}", n, e);
                         break 'out;
                     }
                     _ => (),

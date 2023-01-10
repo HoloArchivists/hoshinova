@@ -2,7 +2,7 @@
 FROM node:16 as web-deps
 WORKDIR /src/web
 COPY web/package.json web/yarn.lock ./
-RUN yarn install
+RUN yarn install --frozen-lockfile
 
 # Create base image for building Rust
 FROM rust:1.62-alpine AS rust-build-image
@@ -49,7 +49,7 @@ FROM alpine AS runner
 WORKDIR /app
 RUN set -ex; \
     apk add --no-cache ffmpeg wget unzip; \
-    wget -O /app/ytarchive.zip https://github.com/Kethsar/ytarchive/releases/download/latest/ytarchive_linux_amd64.zip; \
+    wget -O /app/ytarchive.zip https://github.com/Kethsar/ytarchive/releases/download/v0.3.2/ytarchive_linux_amd64.zip; \
     unzip /app/ytarchive.zip -d /usr/local/bin/; \
     rm /app/ytarchive.zip; \
     apk del wget unzip;
