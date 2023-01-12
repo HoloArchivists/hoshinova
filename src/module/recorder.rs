@@ -474,7 +474,10 @@ impl YTAStatus {
         }
 
         // New versions of ytarchive prepend a timestamp to the output
-        let line = if self.version == Some("0.3.2".into()) {
+        let line = if self.version == Some("0.3.2".into())
+            && line.len() > 20
+            && line.chars().nth(4) == Some('/')
+        {
             line[20..].trim()
         } else {
             line
@@ -515,6 +518,8 @@ impl YTAStatus {
             || line.contains("Loaded cookie file")
             || line.starts_with("Video Title: ")
             || line.starts_with("Channel: ")
+            || line.starts_with("Waiting for this time to elapse")
+            || line.starts_with("Download Finished")
         {
             // Ignore
         } else {
