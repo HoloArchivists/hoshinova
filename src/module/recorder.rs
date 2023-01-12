@@ -4,7 +4,6 @@ use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::FutureExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Serialize;
@@ -18,7 +17,6 @@ use std::{
         Arc,
     },
 };
-use tokio::select;
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::{mpsc, RwLock},
@@ -128,44 +126,50 @@ impl YTArchive {
         }
 
         // Read stdout
-        let done_clone = done.clone();
-        let task_name_clone = task_name.clone();
-        let tx_clone = tx.clone();
-        let h_stdout = tokio::spawn(async move {
-            while !done_clone.load(Ordering::Relaxed) {
-                read_line!(&mut stdout, tx_clone);
+        let h_stdout = tokio::spawn({
+            let done = done.clone();
+            let task_name = task_name.clone();
+            let tx = tx.clone();
+            async move {
+                while !done.load(Ordering::Relaxed) {
+                    read_line!(&mut stdout, tx);
+                }
+                trace!("{} stdout reader exited", task_name);
             }
-            trace!("{} stdout reader exited", task_name_clone);
         });
 
         // Read stderr
-        let done_clone = done.clone();
-        let task_name_clone = task_name.clone();
-        let tx_clone = tx.clone();
-        let h_stderr = tokio::spawn(async move {
-            while !done_clone.load(Ordering::Relaxed) {
-                read_line!(&mut stderr, tx_clone);
+        let h_stderr = tokio::spawn({
+            let done = done.clone();
+            let task_name = task_name.clone();
+            let tx = tx.clone();
+            async move {
+                while !done.load(Ordering::Relaxed) {
+                    read_line!(&mut stderr, tx);
+                }
+                trace!("{} stderr reader exited", task_name);
             }
-            trace!("{} stderr reader exited", task_name_clone);
         });
 
         // Wait for the process to exit
-        let done_clone = done.clone();
-        let task_name_clone = task_name.clone();
-        let h_wait = tokio::spawn(async move {
-            let result = process.wait().await;
+        let h_wait = tokio::spawn({
+            let done = done.clone();
+            let task_name = task_name.clone();
+            async move {
+                let result = process.wait().await;
 
-            // Wait a bit for the stdout to be completely read
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                // Wait a bit for the stdout to be completely read
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-            // Stop threads
-            done_clone.store(true, Ordering::Relaxed);
-            debug!("{} Process exited with {:?}", task_name_clone, result);
+                // Stop threads
+                done.store(true, Ordering::Relaxed);
+                debug!("{} Process exited with {:?}", task_name, result);
 
-            // Send a blank message to unblock the status monitor thread
-            let _ = tx.send("".into());
+                // Send a blank message to unblock the status monitor thread
+                let _ = tx.send("".into());
 
-            result
+                result
+            }
         });
 
         // Parse each line
