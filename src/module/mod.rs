@@ -1,4 +1,4 @@
-use self::recorder::YTAStatus;
+use self::recorder::ytarchive::YTAStatus;
 use crate::{config::Config, msgbus::BusTx};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -43,7 +43,7 @@ pub struct Notification {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct RecordingStatus {
     pub task: Task,
-    pub status: YTAStatus,
+    pub status: YTStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, TS)]

@@ -1,4 +1,4 @@
-use super::{recorder::YTAStatus, Message, Module, Task};
+use super::{recorder::ytarchive::YTAStatus, Message, Module, Task};
 use crate::{
     config::{Config, WebserverConfig},
     msgbus::BusTx,

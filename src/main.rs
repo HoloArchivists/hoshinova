@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate json;
 use crate::module::Module;
 use crate::msgbus::MessageBus;
 use anyhow::{anyhow, Result};
@@ -116,7 +117,7 @@ async fn main() -> Result<()> {
 
     let config = Arc::new(RwLock::new(config));
     let h_scraper = run_module!(bus, module::scraper::RSS::new(config.clone()));
-    let h_recorder = run_module!(bus, module::recorder::YTArchive::new(config.clone()));
+    let h_recorder = run_module!(bus, module::recorder::ytarchive::YTArchive::new(config.clone()));
     let h_notifier = run_module!(bus, module::notifier::Discord::new(config.clone()));
     let h_webserver = run_module!(bus, module::web::WebServer::new(config.clone()));
 
