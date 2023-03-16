@@ -1,4 +1,5 @@
 use super::super::{Message, Module, Notification, Task, TaskStatus};
+use super::{YTState, YTStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Context, Result};
@@ -24,13 +25,10 @@ use tokio::{
 use ts_rs::TS;
 
 
-pub struct YTArchive {
-    config: Arc<RwLock<Config>>,
-    active_ids: Arc<RwLock<HashSet<String>>>,
-}
+pub struct YTArchive;
 
 impl YTArchive {
-    async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+    pub async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
         let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
 
         // Ensure the working directory exists
@@ -174,7 +172,7 @@ impl YTArchive {
         });
 
         // Parse each line
-        let mut status = YTAStatus::new();
+        let mut status = YTStatus::new();
         loop {
             let line = match rx.recv().await {
                 Some(line) => line,
@@ -208,32 +206,32 @@ impl YTArchive {
             }
 
             let message = match status.state {
-                YTAState::Waiting(_) => {
+                YTState::Waiting(_) => {
                     info!("{} Waiting for stream to go live", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Waiting,
                     }))
                 }
-                YTAState::Recording => {
+                YTState::Recording => {
                     info!("{} Recording started", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Recording,
                     }))
                 }
-                YTAState::Finished => {
+                YTState::Finished => {
                     info!("{} Recording finished", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Done,
                     }))
                 }
-                YTAState::AlreadyProcessed => {
+                YTState::AlreadyProcessed => {
                     info!("{} Video already processed, skipping", task_name);
                     None
                 }
-                YTAState::Interrupted => {
+                YTState::Interrupted => {
                     info!("{} Recording failed: interrupted", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
@@ -260,7 +258,7 @@ impl YTArchive {
         trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
         // Skip moving files if it didn't finish
-        if status.state != YTAState::Finished {
+        if status.state != YTState::Finished {
             return Ok(());
         }
 
@@ -298,85 +296,6 @@ impl YTArchive {
     }
 }
 
-struct SpawnTask {
-    task: Task,
-    cfg: Config,
-    tx: BusTx<Message>,
-}
-
-#[async_trait]
-impl Module for YTArchive {
-    fn new(config: Arc<RwLock<Config>>) -> Self {
-        let active_ids = Arc::new(RwLock::new(HashSet::new()));
-        Self { config, active_ids }
-    }
-
-    async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
-        // Create a spawn queue
-        let (spawn_tx, mut spawn_rx) = mpsc::unbounded_channel::<SpawnTask>();
-
-        // Future to handle spawning new tasks
-        let active_ids = self.active_ids.clone();
-        let f_spawner = async move {
-            while let Some(mut task) = spawn_rx.recv().await {
-                let active_ids = active_ids.clone();
-                let delay = task.cfg.ytarchive.delay_start;
-
-                debug!("Spawning thread for task: {:?}", task.task);
-                tokio::spawn(async move {
-                    let video_id = task.task.video_id.clone();
-                    active_ids.write().await.insert(video_id.clone());
-
-                    if let Err(e) = YTArchive::record(task.cfg, task.task, &mut task.tx).await {
-                        error!("Failed to record task: {:?}", e);
-                    };
-
-                    active_ids.write().await.remove(&video_id);
-                });
-
-                // Wait a bit before starting the next task
-                tokio::time::sleep(delay).await;
-            }
-
-            Ok::<(), anyhow::Error>(())
-        };
-
-        // Future to handle incoming messages
-        let f_message = async move {
-            while let Some(message) = rx.recv().await {
-                match message {
-                    Message::ToRecord(task) => {
-                        // Check if the task is already active
-                        if self.active_ids.read().await.contains(&task.video_id) {
-                            warn!("Task {} is already active, skipping", task.video_id);
-                            continue;
-                        }
-
-                        debug!("Adding task to spawn queue: {:?}", task);
-                        let tx = tx.clone();
-                        let cfg = self.config.read().await;
-                        let cfg = cfg.clone();
-
-                        if let Err(_) = spawn_tx.send(SpawnTask { task, cfg, tx }) {
-                            debug!("Spawn queue closed, exiting");
-                            break;
-                        }
-                    }
-                    _ => (),
-                }
-            }
-
-            Ok::<(), anyhow::Error>(())
-        };
-
-        // Run the futures
-        tokio::try_join!(f_spawner, f_message)?;
-
-        debug!("YTArchive module finished");
-        Ok(())
-    }
-}
-
 fn strip_ansi(s: &str) -> String {
     lazy_static! {
         static ref RE: Regex = Regex::new(concat!(
@@ -393,11 +312,11 @@ fn strip_ansi(s: &str) -> String {
         .to_string()
 }
 
-impl YTAStatus {
+impl YTStatus {
     pub fn new() -> Self {
         Self {
             version: None,
-            state: YTAState::Idle,
+            state: YTState::Idle,
             last_output: None,
             last_update: chrono::Utc::now(),
             video_fragments: None,
@@ -425,7 +344,7 @@ impl YTAStatus {
         self.last_update = chrono::Utc::now();
 
         if line.starts_with("Video Fragments: ") {
-            self.state = YTAState::Recording;
+            self.state = YTState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
                 self.video_fragments = x.trim().parse().ok();
@@ -438,7 +357,7 @@ impl YTAStatus {
             };
             return;
         } else if line.starts_with("Audio Fragments: ") {
-            self.state = YTAState::Recording;
+            self.state = YTState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
                 self.audio_fragments = x.trim().parse().ok();
@@ -467,29 +386,29 @@ impl YTAStatus {
             let date = DateTime::parse_from_rfc3339(&line[17..42])
                 .ok()
                 .map(|d| d.into());
-            self.state = YTAState::Waiting(date);
+            self.state = YTState::Waiting(date);
         } else if line.starts_with("Stream is ") || line.starts_with("Waiting for stream") {
-            self.state = YTAState::Waiting(None);
+            self.state = YTState::Waiting(None);
         } else if line.starts_with("Muxing final file") {
-            self.state = YTAState::Muxing;
+            self.state = YTState::Muxing;
         } else if line.starts_with("Livestream has been processed") {
-            self.state = YTAState::AlreadyProcessed;
+            self.state = YTState::AlreadyProcessed;
         } else if line.starts_with("Livestream has ended and is being processed")
             || line.contains("use yt-dlp to download it.")
         {
-            self.state = YTAState::Ended;
+            self.state = YTState::Ended;
         } else if line.starts_with("Final file: ") {
-            self.state = YTAState::Finished;
+            self.state = YTState::Finished;
             self.output_file = Some(strip_ansi(&line[12..]));
         } else if line.contains("User Interrupt") {
-            self.state = YTAState::Interrupted;
+            self.state = YTState::Interrupted;
         } else if line.contains("Error retrieving player response")
             || line.contains("unable to retrieve")
             || line.contains("error writing the muxcmd file")
             || line.contains("Something must have gone wrong with ffmpeg")
             || line.contains("At least one error occurred")
         {
-            self.state = YTAState::Errored;
+            self.state = YTState::Errored;
         } else if line.trim().is_empty()
             || line.contains("Loaded cookie file")
             || line.starts_with("Video Title: ")

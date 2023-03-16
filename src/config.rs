@@ -6,8 +6,8 @@ use ts_rs::TS;
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct Config {
-    pub ytarchive: YtarchiveConfig,
-    pub ytdlp: YtdlpConfig,
+    pub ytarchive: RecorderConfig,
+    pub ytdlp: RecorderConfig,
     pub scraper: ScraperConfig,
     pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
@@ -20,7 +20,7 @@ pub struct Config {
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
 #[ts(export, export_to = "web/src/bindings/")]
-pub struct YtarchiveConfig {
+pub struct RecorderConfig {
     pub executable_path: String,
     pub working_directory: String,
     pub args: Vec<String>,
@@ -33,19 +33,6 @@ pub struct YtarchiveConfig {
 
 fn default_delay_start() -> std::time::Duration {
     std::time::Duration::from_secs(1)
-}
-
-#[derive(Clone, TS, Serialize, Deserialize, Debug)]
-#[ts(export, export_to = "web/src/bindings/")]
-pub struct YtdlpConfig {
-    pub executable_path: String,
-    pub working_directory: String,
-    pub args: Vec<String>,
-    pub quality: String,
-    #[serde(with = "humantime_serde")]
-    #[serde(default = "default_delay_start")]
-    #[ts(type = "string")]
-    pub delay_start: std::time::Duration,
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
@@ -102,6 +89,7 @@ pub struct ChannelConfig {
     pub outpath: String,
     /// If not present, will be fetched during runtime.
     pub picture_url: Option<String>,
+    pub recorder: String, // TODO: Check this is a valid recorder on config load.
 }
 
 fn default_false() -> bool {

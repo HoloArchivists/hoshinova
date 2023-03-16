@@ -1,4 +1,4 @@
-use self::recorder::ytarchive::YTAStatus;
+use self::recorder::YTStatus;
 use crate::{config::Config, msgbus::BusTx};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -30,6 +30,7 @@ pub struct Task {
     pub channel_id: String,
     pub channel_picture: Option<String>,
     pub output_directory: String,
+    pub recorder: String,
 }
 
 #[derive(Debug, Clone, TS)]
