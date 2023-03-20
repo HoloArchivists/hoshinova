@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate log;
-extern crate json;
 use crate::module::Module;
 use crate::msgbus::MessageBus;
 use anyhow::{anyhow, Result};

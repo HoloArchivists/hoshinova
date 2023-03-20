@@ -1,13 +1,14 @@
 use super::super::{Message, Module, Notification, Task, TaskStatus};
+use super::{RecorderState, VideoStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration, Local};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     fs,
     path::Path,
@@ -22,7 +23,6 @@ use tokio::{
     sync::{mpsc, RwLock},
 };
 use ts_rs::TS;
-use json;
 
 pub struct YTDlp {
     config: Arc<RwLock<Config>>,
@@ -30,7 +30,7 @@ pub struct YTDlp {
 }
 
 impl YTDlp {
-    async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
+    pub async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
         let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
 
         // Ensure the working directory exists
@@ -48,9 +48,12 @@ impl YTDlp {
         let mut args = cfg.args.clone();
 
         // Add the --wait-for-video flag if not present
-        if !args.iter().any( |e| Regex::new(r"--wait-for-video \d+").unwrap().is_match(e) ) {
+        if !args.contains(&"--wait-for-video".to_string()) {
             // --wait-for-video requires an arg dictating how often to poll, but at least for youtube it's ignored and when the stream is scheduled is used.
-            args.push("--wait-for-video 10".to_string());
+            args.extend(vec![
+                "--wait-for-video".to_string(),
+                "10".to_string(),
+            ]);
         }
 
         // Add the --live-from-start flag if not present
@@ -63,30 +66,41 @@ impl YTDlp {
             args.push("--no-colors".to_string());
         }
 
-        let progress_bar_template = r#"
-            [download_progress]
-            {
-              "percentage": "%(progress._percent_str)s",
-              "total_size": "%( progress._total_bytes_str)s",
-              "estimated_total_size": "%(progress._total_bytes_estimate_str)s",
-              "downloaded_size": "%(progress._downloaded_bytes_str)s",
-              "speed": "%(progress._speed_str)s",
-              "eta": "%(progress._eta_str)s",
-              "elapsed_time": "%(progress._elapsed_str)s",
-              "total_fragments": "%(progress.fragment_count)s",
-              "current_fragment_count": "%(progress.fragment_index)s",
-              "format": "%(info.format)s"
-            }
-        "#.replace(&"\n", "");
+        if !args.contains(&"--newline".to_string()) {
+            args.push("--newline".to_string());
+        }
 
-        args.push(format!("--progress-template '{progress_bar_template}'").to_string());
+        let progress_bar_format_map: BTreeMap<&str, &str> = BTreeMap::from([
+            ("percentage", "progress._percent_str"),
+            ("total_size", "progress._total_bytes_str"),
+            ("estimated_total_size", "progress._total_bytes_estimate_str"),
+            ("downloaded_size", "progress._downloaded_bytes_str"),
+            ("speed", "progress._speed_str"),
+            ("eta", "progress._eta_str"),
+            ("elapsed_time", "progress._elapsed_str"),
+            ("total_fragments", "progress.fragment_count"),
+            ("current_fragment_count", "progress.fragment_index"),
+            ("format", "info.format"),
+        ]);
 
-        args.push("--exec echo '[download_finished]  output_file: (filepath,_filename|)q'".to_string());
+        let progress_bar_template: String = progress_bar_format_map.values().map(|x| format!("%({})s", x) ).collect::<Vec<String>>().join(",");
+        args.extend(vec![
+            "--progress-template".to_string(),
+            format!("[download_progress] {progress_bar_template}\n").to_string(),
+        ]);
 
+        args.extend(vec![
+            "--exec".to_string(),
+            r#""echo '[download_finished] output_file: (filepath,_filename|)q'""#.to_string(),
+        ]);
+
+        args.push(format!("https://youtu.be/{}", task.video_id));
         args.extend(vec![
             format!("https://youtu.be/{}", task.video_id),
             cfg.quality.clone(),
         ]);
+
+        // TODO: This code almost completely same between ytarchive and yt-dlp. Share it.
 
         // Start the process
         debug!("{} Starting yt-dlp with args {:?}", task_name, args);
@@ -205,7 +219,7 @@ impl YTDlp {
         });
 
         // Parse each line
-        let mut status = YTDStatus::new();
+        let mut parser = YTDOutputParser::new();
         loop {
             let line = match rx.recv().await {
                 Some(line) => line,
@@ -219,14 +233,14 @@ impl YTDlp {
 
             trace!("{}[ytd:out] {}", task_name, line);
 
-            let old = status.clone();
-            status.parse_line(&line);
+            let old_state = parser.video_status.state.clone();
+            parser.parse_line(&line);
 
             // Push the current status to the bus
             if let Err(_) = bus
                 .send(Message::RecordingStatus(RecordingStatus {
                     task: task.clone(),
-                    status: status.clone(),
+                    status: parser.video_status.clone(),
                 }))
                 .await
             {
@@ -234,37 +248,37 @@ impl YTDlp {
             }
 
             // Check if status changed
-            if old.state == status.state {
+            if old_state == parser.video_status.state {
                 continue;
             }
 
-            let message = match status.state {
-                YTDState::Waiting(_) => {
+            let message = match parser.video_status.state {
+                RecorderState::Waiting(_) => {
                     info!("{} Waiting for stream to go live", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Waiting,
                     }))
                 }
-                YTDState::Recording => {
+                RecorderState::Recording => {
                     info!("{} Recording started", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Recording,
                     }))
                 }
-                YTDState::Finished => {
+                RecorderState::Finished => {
                     info!("{} Recording finished", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Done,
                     }))
                 }
-                YTDState::AlreadyProcessed => {
+                RecorderState::AlreadyProcessed => {
                     info!("{} Video already processed, skipping", task_name);
                     None
                 }
-                YTDState::Interrupted => {
+                RecorderState::Interrupted => {
                     info!("{} Recording failed: interrupted", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
@@ -282,7 +296,7 @@ impl YTDlp {
             }
         }
 
-        trace!("{} Status loop exited: {:?}", task_name, status);
+        trace!("{} Status loop exited: {:?}", task_name, parser.video_status);
 
         // Wait for threads to finish
         let (r_wait, r_stdout, r_stderr) = futures::join!(h_wait, h_stdout, h_stderr);
@@ -291,12 +305,12 @@ impl YTDlp {
         trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
         // Skip moving files if it didn't finish
-        if status.state != YTDState::Finished {
+        if parser.video_status.state != RecorderState::Finished {
             return Ok(());
         }
 
         // Move the video to the output directory
-        let frompath = status
+        let frompath = parser.video_status
             .output_file
             .ok_or(anyhow!("yt-dlp did not emit an output file"))?;
         let frompath = Path::new(&frompath);
@@ -329,170 +343,20 @@ impl YTDlp {
     }
 }
 
-struct SpawnTask {
-    task: Task,
-    cfg: Config,
-    tx: BusTx<Message>,
+pub struct YTDOutputParser {
+    video_status: VideoStatus,
 }
 
-#[async_trait]
-impl Module for YTDlp {
-    fn new(config: Arc<RwLock<Config>>) -> Self {
-        let active_ids = Arc::new(RwLock::new(HashSet::new()));
-        Self { config, active_ids }
-    }
-
-    async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
-        // Create a spawn queue
-        let (spawn_tx, mut spawn_rx) = mpsc::unbounded_channel::<SpawnTask>();
-
-        // Future to handle spawning new tasks
-        let active_ids = self.active_ids.clone();
-        let f_spawner = async move {
-            while let Some(mut task) = spawn_rx.recv().await {
-                let active_ids = active_ids.clone();
-                let delay = task.cfg.ytarchive.delay_start;
-
-                debug!("Spawning thread for task: {:?}", task.task);
-                tokio::spawn(async move {
-                    let video_id = task.task.video_id.clone();
-                    active_ids.write().await.insert(video_id.clone());
-
-                    if let Err(e) = YTDlp::record(task.cfg, task.task, &mut task.tx).await {
-                        error!("Failed to record task: {:?}", e);
-                    };
-
-                    active_ids.write().await.remove(&video_id);
-                });
-
-                // Wait a bit before starting the next task
-                tokio::time::sleep(delay).await;
-            }
-
-            Ok::<(), anyhow::Error>(())
-        };
-
-        // Future to handle incoming messages
-        let f_message = async move {
-            while let Some(message) = rx.recv().await {
-                match message {
-                    Message::ToRecord(task) => {
-                        // Check if the task is already active
-                        if self.active_ids.read().await.contains(&task.video_id) {
-                            warn!("Task {} is already active, skipping", task.video_id);
-                            continue;
-                        }
-
-                        debug!("Adding task to spawn queue: {:?}", task);
-                        let tx = tx.clone();
-                        let cfg = self.config.read().await;
-                        let cfg = cfg.clone();
-
-                        if let Err(_) = spawn_tx.send(SpawnTask { task, cfg, tx }) {
-                            debug!("Spawn queue closed, exiting");
-                            break;
-                        }
-                    }
-                    _ => (),
-                }
-            }
-
-            Ok::<(), anyhow::Error>(())
-        };
-
-        // Run the futures
-        tokio::try_join!(f_spawner, f_message)?;
-
-        debug!("YTDlp module finished");
-        Ok(())
-    }
-}
-
-/// The current state of ytd-dlp.
-#[derive(Debug, Clone, TS, Serialize)]
-#[ts(export, export_to = "web/src/bindings/")]
-pub struct YTDStatus {
-    version: Option<String>,
-    state: YTDState,
-    last_output: Option<String>,
-    last_update: chrono::DateTime<chrono::Utc>,
-    video_fragments: Option<u32>,
-    audio_fragments: Option<u32>,
-    total_size: Option<String>,
-    video_quality: Option<String>,
-    output_file: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, TS, Serialize)]
-#[ts(export, export_to = "web/src/bindings/")]
-pub enum YTDState {
-    Idle,
-    Waiting(Option<DateTime<Utc>>),
-    Recording,
-    Muxing,
-    Finished,
-    AlreadyProcessed,
-    Ended,
-    Interrupted,
-    Errored,
-}
-
-fn strip_ansi(s: &str) -> String {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(concat!(
-            r"[\u001B\u009B][[\\]()#;?]*",
-            r"(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|",
-            r"(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))",
-        ))
-        .expect("Failed to compile ANSI stripping regex");
-    }
-    let stripped = RE.replace_all(s, "").to_string();
-    stripped
-        .strip_suffix("\u{001b}[K")
-        .unwrap_or(&stripped)
-        .to_string()
-}
-
-impl YTDStatus {
+impl YTDOutputParser {
     pub fn new() -> Self {
         Self {
-            version: None,
-            state: YTDState::Idle,
-            last_output: None,
-            last_update: chrono::Utc::now(),
-            video_fragments: None,
-            audio_fragments: None,
-            total_size: None,
-            video_quality: None,
-            output_file: None,
+            video_status: VideoStatus::new()
         }
     }
 
-    /// parse_line parses a line of output from the ytarchive process.
+    /// parse_line parses a line of output from the yt-dlp process.
     ///
     /// Sample output:
-    ///
-    ///   ytarchive 0.3.1-15663af
-    ///   Stream starts at 2022-03-14T14:00:00+00:00 in 11075 seconds. Waiting for this time to elapse...
-    ///   Stream is 30 seconds late...
-    ///   Selected quality: 1080p60 (h264)
-    ///   Video Fragments: 1215; Audio Fragments: 1215; Total Downloaded: 133.12MiB
-    ///   Download Finished
-    ///   Muxing final file...
-    ///   Final file: /path/to/output.mp4
-    ///
-    ///   [download] Downloading item 18 of 359
-    ///   [youtube] Extracting URL: https://www.youtube.com/watch?v=mNNsaF6ouOE
-    ///   [youtube] mNNsaF6ouOE: Downloading webpage
-    ///   [youtube] mNNsaF6ouOE: Downloading android player API JSON
-    ///   [info] mNNsaF6ouOE: Downloading subtitles: live_chat
-    ///   [info] mNNsaF6ouOE: Downloading 1 format(s): 299+251
-    ///   [info] Writing video subtitles to: I AM UNDEFEATABLE ｜｜ Tetris w⧸ Viewers [mNNsaF6ouOE].live_chat.json
-    ///   [youtube_live_chat] Downloading live chat
-    ///   [youtube_live_chat] Total fragments: unknown (live)
-    ///   [download] Destination: I AM UNDEFEATABLE ｜｜ Tetris w⧸ Viewers [mNNsaF6ouOE].live_chat.json
-    ///   [download]   14.88MiB at  607.14KiB/s (00:00:18) (frag 64)
-    ///
     ///   [Cookies] Extracting cookies from firefox
     ///   [Cookies] Extracted 2449 cookies from firefox
     ///   [youtube] Extracting URL: https://www.youtube.com/watch?v=gEdOmal1A6Q
@@ -504,7 +368,8 @@ impl YTDStatus {
     ///   [dashsegments] Total fragments: 11
     ///   [download] Destination: im orb [gEdOmal1A6Q].f299.mp4
     ///   WARNING: The download speed shown is only of one thread. This is a known issue
-    ///   [download] 100% of  100.96MiB in 00:00:09 at 10.87MiB/s
+    ///   1: [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  100%,  99.27MiB/s,NA,       N/A
+    ///   2: [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  100%%,   4.35MiB/s,NA,       N/A
     ///   [dashsegments] Total fragments: 2
     ///   [download] Destination: im orb [gEdOmal1A6Q].f251.webm
     ///   WARNING: The download speed shown is only of one thread. This is a known issue
@@ -526,131 +391,119 @@ impl YTDStatus {
     ///   [dashsegments] Total fragments: 11
     ///   [download] Destination: im orb [gEdOmal1A6Q].f299.mp4
     ///   WARNING: The download speed shown is only of one thread. This is a known issue
-    ///   [download]   3.2% of ~ 110.00MiB at    1.83MiB/s ETA 00:58 (frag 0/11)
+    ///   [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  0.0%,  99.27MiB/s,NA,       N/A
+    ///   [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
     ///
 
     pub fn parse_line(&mut self, line: &str) {
-        self.last_output = Some(line.to_string());
-        self.last_update = chrono::Utc::now();
+        self.video_status.last_output = Some(line.to_string());
+        self.video_status.last_update = chrono::Utc::now();
 
-        if line.starts_with("[download_progress]") {
-            // Live downloads
-            // [download]   33.90MiB at  587.08KiB/s (00:00:48) (frag 171)
-            // VOD downloads
-            // [download]   3.2% of ~ 110.00MiB at    1.83MiB/s ETA 00:58 (frag 0/11)
+        // This is also defined in YTDlp. I'm trying to share it but having issues with BTreeMap, it probably does need to be BTreeMap, just something ordered.
+        let progress_bar_format_map: BTreeMap<&str, &str> = BTreeMap::from([
+            ("percentage", "progress._percent_str"),
+            ("total_size", "progress._total_bytes_str"),
+            ("estimated_total_size", "progress._total_bytes_estimate_str"),
+            ("downloaded_size", "progress._downloaded_bytes_str"),
+            ("speed", "progress._speed_str"),
+            ("eta", "progress._eta_str"),
+            ("elapsed_time", "progress._elapsed_str"),
+            ("total_fragments", "progress.fragment_count"),
+            ("current_fragment_count", "progress.fragment_index"),
+            ("format", "info.format"),
+        ]);
 
-            // lazy_static! {
-            //     static ref ProgressBarRegex: Regex = Regex::new(r"
-            //         (?x)
-            //         \[download\]\s+
-            //         (
-            //             (?P<percentage>\d+\.\d+)%\s+of\s+~\s+(?P<total_size>\d+\.\d+\w+)
-            //             |
-            //             (?P<current_size>\d+\.\d+\w+)
-            //         )
-            //         \s+at\s+(?P<download_speed>\d+\.\d+\w+\/s\s+)?
-            //         (
-            //             (ETA\s+(?P<eta>\d+:\d+))
-            //             |
-            //             \((?P<elapsed_time>\d+:\d+:\d+)\)
-            //         )
-            //         \s+\(frag\s+(?P<current_fragments>\d+)(\/(?P<total_fragment>\d+))?\)
-            //     ").unwrap().expect("Failed to compile YTDlp progress bar regex");
-            // }
-            //
-            // let progress_bar_captures = line.captures(&ProgressBarRegex).unwrap();
-            // if progress_bar_captures {
-            //     self.state = YTDState::Recording;
-            //
-            //     self.video_fragments = x.trim().parse().ok();
-            //     self.audio_fragments = x.trim().parse().ok();
-            //
-            //     if let Some(x) = parts.next() {
-            //         self.total_size = Some(strip_ansi(x.trim()));
-            //     };
-            // }
+        if line.contains("[download_progress]") {
+            self.video_status.state = RecorderState::Recording;
+            // 1: [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  0.0%,  99.27MiB/s,NA,       N/A
+            // 2: [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
+            // [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
+            let re = Regex::new(r"(\d:\s)?\[download_progress\]").unwrap();
+            let line = re.replace(line, "");
+            let line_values: Vec<_> = line.split(",").map(|x| x.trim()).collect();
+            let parsed_line: HashMap<String, String> = progress_bar_format_map.keys().zip(
+                line_values.iter()
+            ).map(|(x, y)| (x.to_string(), y.to_string())).collect();
 
+            self.video_status.state = RecorderState::Recording;
+            self.video_status.last_update = chrono::Utc::now();
 
-            // [download_progress]
-            // {
-            //   "percentage": "%(progress._percent_str)s",
-            //   "total_size": "%( progress._total_bytes_str)s",
-            //   "estimated_total_size": "%(progress._total_bytes_estimate_str)s",
-            //   "downloaded_size": "%(progress._downloaded_bytes_str)s",
-            //   "speed": "%(progress._speed_str)s",
-            //   "eta": "%(progress._eta_str)s",
-            //   "elapsed_time": "%(progress._elapsed_str)s",
-            //   "total_fragments": "%(progress.fragment_count)s",
-            //   "current_fragment_count": "%(progress.fragment_index)s",
-            //   "format": "%(info.format)s"
-            // }
-
-            let parsed_line = json::parse(&line.replace(&"[download_progress]", &"")).unwrap();
-
-            return;
-        } else if line.starts_with("Audio Fragments: ") {
-            self.state = YTDState::Recording;
-            let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
-            if let Some(x) = parts.next() {
-                self.audio_fragments = x.trim().parse().ok();
+            let total_size = parsed_line.get("total_size");
+            if !total_size.eq(&Some(&"N/A".to_string())) {
+                self.video_status.total_size = total_size.cloned();
+            } else {
+                self.video_status.total_size = parsed_line.get("estimated_total_size").cloned();
             };
-            if let Some(x) = parts.next() {
-                self.total_size = Some(strip_ansi(x.trim()));
-            };
+
+            // This works a bit different than ytarchive.
+            // This will be something like "299 - 1920x1080 (DASH video)". It's the youtube format and it's specific to the track so a download will have multiple.
+            // Setting this in the format property probably isn't right
+            self.video_status.video_quality = parsed_line.get("format").cloned();
+
+            // Hacky as this will only work DASH live streams. There is probably a better way to differentiate audio track from video track based format that will work in all cases.
+            if self.video_status.video_quality.as_ref().unwrap().contains("(DASH video)") {
+                self.video_status.video_fragments = parsed_line.get("current_fragment_count").unwrap().parse().ok();
+            } else if self.video_status.video_quality.as_ref().unwrap().contains("(DASH audio)") {
+                self.video_status.audio_fragments = parsed_line.get("current_fragment_count").unwrap().parse().ok();
+            }
+
             return;
         }
 
-        // New versions of ytarchive prepend a timestamp to the output
-        // let line = if self.version == Some("0.3.2".into())
-        //     && line.len() > 20
-        //     && line.chars().nth(4) == Some('/')
-        // {
-        //     line[20..].trim()
-        // } else {
-        //     line
-        // };
+        let waiting_text = "[wait] Remaining time until next attempt:"; // Does it make sense to have this as a variable? Move to constant?
+        if line.starts_with(waiting_text) {
+            // I like using split as it seems less error prone than referencing a specific position in the string, like is done in some places in ytarchive module.
+            // Not sure if it really matters or if there is a performance implication of doing it this way.
+            // [wait] Remaining time until next attempt: 759:35:3459:59:52
+            let duration = line.rsplit(waiting_text).next().unwrap();
 
-        if self.version == None && line.starts_with("ytarchive ") {
-            self.version = Some(strip_ansi(&line[10..]));
-        } else if self.video_quality == None && line.starts_with("Selected quality: ") {
-            self.video_quality = Some(strip_ansi(&line[18..]));
-        } else if line.starts_with("Stream starts at ") {
-            let date = DateTime::parse_from_rfc3339(&line[17..42])
-                .ok()
-                .map(|d| d.into());
-            self.state = YTDState::Waiting(date);
-        } else if line.starts_with("Stream is ") || line.starts_with("Waiting for stream") {
-            self.state = YTDState::Waiting(None);
-        } else if line.starts_with("Muxing final file") {
-            self.state = YTDState::Muxing;
-        } else if line.starts_with("Livestream has been processed") {
-            self.state = YTDState::AlreadyProcessed;
-        } else if line.starts_with("Livestream has ended and is being processed")
-            || line.contains("use yt-dlp to download it.")
+            let mut duration_split = duration.rsplit(":").to_owned();
+
+            let mut seconds: i64 = duration_split.next().unwrap().parse().unwrap();
+            if let Some(minutes) = duration_split.next() {
+                let minutes: i64 = minutes.parse().unwrap();
+                seconds += minutes * 60;
+            };
+            if let Some(hours) = duration_split.next() {
+                let hours: i64 = hours.parse().unwrap();
+                seconds += hours * 60 * 60;
+            };
+
+            let date: DateTime<Utc> = (Local::now() + Duration::seconds(seconds)).with_timezone(&Utc);
+
+            self.video_status.state = RecorderState::Waiting(Some(date));
+        } else if line.starts_with("[wait]") {
+            // Trying to handle the case when we are just waiting for the stream and there isn't a timestamp returned.
+            // I'm not sure of the yt-dlp output in that case.
+            self.video_status.state = RecorderState::Waiting(None);
+        } else if line.starts_with("[Merger]") ||
+            line.starts_with("[Metadata]") || // yt-dlp is adding metadata to file. It can take some time depending on disk speed. For now treat it the same as muxing.
+            line.starts_with("[EmbedSubtitle]") // yt-dlp is adding subtitles to file. It can take a while depending on disk speed. For now treat it the same as muxing.
         {
-            self.state = YTDState::Ended;
-        } else if line.starts_with("Final file: ") {
-            self.state = YTDState::Finished;
-            self.output_file = Some(strip_ansi(&line[12..]));
-        } else if line.contains("User Interrupt") {
-            self.state = YTDState::Interrupted;
-        } else if line.contains("Error retrieving player response")
-            || line.contains("unable to retrieve")
-            || line.contains("error writing the muxcmd file")
-            || line.contains("Something must have gone wrong with ffmpeg")
-            || line.contains("At least one error occurred")
-        {
-            self.state = YTDState::Errored;
+            self.video_status.state = RecorderState::Muxing;
+        } else if line.starts_with("[download_finished]") {
+            self.video_status.state = RecorderState::Finished;
+            self.video_status.output_file =  Some(line.rsplit("[download_finished] output_file: ").next().unwrap().trim().to_string());
+        }  else if line.contains("ERROR: Interrupted by user") {
+            self.video_status.state = RecorderState::Interrupted;
+        } else if line.starts_with("ERROR:") { // Need to investigate if this is the best way to catch errors
+            self.video_status.state = RecorderState::Errored;
         } else if line.trim().is_empty()
-            || line.contains("Loaded cookie file")
-            || line.starts_with("Video Title: ")
-            || line.starts_with("Channel: ")
-            || line.starts_with("Waiting for this time to elapse")
-            || line.starts_with("Download Finished")
+            || line.starts_with("[Cookies]")
+            || line.starts_with("[youtube]")
+            || line.starts_with("[info]")
+            || line.starts_with("[dashsegments]")
+            || line.starts_with("WARNING:")
+            || line.starts_with("[download]")
+            || line.starts_with("[generic]")
         {
+            // There are probably more that need to be handled
             // Ignore
         } else {
             warn!("Unknown yt-dlp output: {}", line);
         }
+
+        // RecorderState::Ended and  RecorderState::AlreadyProcessed aren't relevant for yt-dlp
+        // May need to add an extra configuration to ignore older videos, or just be fine with scraper.rss ignore_older_than
     }
 }

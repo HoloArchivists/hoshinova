@@ -2,7 +2,8 @@ use crate::module::Module;
 
 mod ytarchive;
 use ytarchive::YTArchive;
-// pub mod ytdlp;
+pub mod ytdlp;
+use ytdlp::YTDlp;
 use super::{Message, Notification, Task, TaskStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
@@ -11,8 +12,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::Serialize;
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::{
     fs,
@@ -29,12 +29,12 @@ use tokio::{
 };
 use ts_rs::TS;
 
-/// The current state of ytarchive.
+/// The current state of video.
 #[derive(Debug, Clone, TS, Serialize)]
 #[ts(export, export_to = "web/src/bindings/")]
-pub struct YTStatus {
+pub struct VideoStatus {
     version: Option<String>,
-    state: YTState,
+    state: RecorderState,
     last_output: Option<String>,
     last_update: chrono::DateTime<chrono::Utc>,
     video_fragments: Option<u32>,
@@ -44,9 +44,25 @@ pub struct YTStatus {
     output_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, TS, Serialize)]
+impl VideoStatus {
+    pub fn new() -> Self {
+        Self {
+            version: None,
+            state: RecorderState::Idle,
+            last_output: None,
+            last_update: chrono::Utc::now(),
+            video_fragments: None,
+            audio_fragments: None,
+            total_size: None,
+            video_quality: None,
+            output_file: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, TS, Serialize, Deserialize)]
 #[ts(export, export_to = "web/src/bindings/")]
-pub enum YTState {
+pub enum RecorderState {
     Idle,
     Waiting(Option<DateTime<Utc>>),
     Recording,
@@ -56,6 +72,9 @@ pub enum YTState {
     Ended,
     Interrupted,
     Errored,
+}
+impl RecorderState {
+    fn default() -> Self { RecorderState::Idle }
 }
 
 struct SpawnTask {
@@ -98,15 +117,13 @@ impl Module for RecorderRunner {
                                 error!("Failed to record task: {:?}", e);
                              }
                         }
-                        "ytdlp" => {
-                             if let Err(e) = YTArchive::record(task.cfg, task.task, &mut task.tx).await {
+                        "yt-dlp" => {
+                             if let Err(e) = YTDlp::record(task.cfg, task.task, &mut task.tx).await {
                                 error!("Failed to record task: {:?}", e);
                              }
                         }
                         _ => error!("Failed to record task: invalid recorder {:?}", task.task.recorder),
                     }
-
-                    // if let Err(e) = recorder::record(task.cfg, task.task, &mut task.tx)
 
                     active_ids.write().await.remove(&video_id);
                 });
@@ -149,7 +166,7 @@ impl Module for RecorderRunner {
         // Run the futures
         tokio::try_join!(f_spawner, f_message)?;
 
-        debug!("YTArchive module finished");
+        debug!("RecorderRunner module finished");
         Ok(())
     }
 }

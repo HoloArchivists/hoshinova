@@ -1,5 +1,5 @@
 use super::super::{Message, Module, Notification, Task, TaskStatus};
-use super::{YTState, YTStatus};
+use super::{RecorderState, VideoStatus};
 use crate::msgbus::BusTx;
 use crate::{config::Config, module::RecordingStatus};
 use anyhow::{anyhow, Context, Result};
@@ -23,7 +23,6 @@ use tokio::{
     sync::{mpsc, RwLock},
 };
 use ts_rs::TS;
-
 
 pub struct YTArchive;
 
@@ -54,6 +53,8 @@ impl YTArchive {
             format!("https://youtu.be/{}", task.video_id),
             cfg.quality.clone(),
         ]);
+
+        // TODO: This code almost completely same between ytarchive and yt-dlp. Share it.
 
         // Start the process
         debug!("{} Starting ytarchive with args {:?}", task_name, args);
@@ -172,7 +173,7 @@ impl YTArchive {
         });
 
         // Parse each line
-        let mut status = YTStatus::new();
+        let mut parser = YTAOutputParser::new();
         loop {
             let line = match rx.recv().await {
                 Some(line) => line,
@@ -184,16 +185,16 @@ impl YTArchive {
                 break;
             }
 
-            trace!("{}[yta:out] {}", task_name, line);
+            trace!("{}[ytd:out] {}", task_name, line);
 
-            let old = status.clone();
-            status.parse_line(&line);
+            let old_state = parser.video_status.state.clone();
+            parser.parse_line(&line);
 
             // Push the current status to the bus
             if let Err(_) = bus
                 .send(Message::RecordingStatus(RecordingStatus {
                     task: task.clone(),
-                    status: status.clone(),
+                    status: parser.video_status.clone(),
                 }))
                 .await
             {
@@ -201,37 +202,37 @@ impl YTArchive {
             }
 
             // Check if status changed
-            if old.state == status.state {
+            if old_state == parser.video_status.state {
                 continue;
             }
 
-            let message = match status.state {
-                YTState::Waiting(_) => {
+            let message = match parser.video_status.state {
+                RecorderState::Waiting(_) => {
                     info!("{} Waiting for stream to go live", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Waiting,
                     }))
                 }
-                YTState::Recording => {
+                RecorderState::Recording => {
                     info!("{} Recording started", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Recording,
                     }))
                 }
-                YTState::Finished => {
+                RecorderState::Finished => {
                     info!("{} Recording finished", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
                         status: TaskStatus::Done,
                     }))
                 }
-                YTState::AlreadyProcessed => {
+                RecorderState::AlreadyProcessed => {
                     info!("{} Video already processed, skipping", task_name);
                     None
                 }
-                YTState::Interrupted => {
+                RecorderState::Interrupted => {
                     info!("{} Recording failed: interrupted", task_name);
                     Some(Message::ToNotify(Notification {
                         task: task.clone(),
@@ -249,7 +250,7 @@ impl YTArchive {
             }
         }
 
-        trace!("{} Status loop exited: {:?}", task_name, status);
+        trace!("{} Status loop exited: {:?}", task_name, parser.video_status);
 
         // Wait for threads to finish
         let (r_wait, r_stdout, r_stderr) = futures::join!(h_wait, h_stdout, h_stderr);
@@ -258,12 +259,12 @@ impl YTArchive {
         trace!("{} Stderr monitor quit: {:?}", task_name, r_stderr);
 
         // Skip moving files if it didn't finish
-        if status.state != YTState::Finished {
+        if parser.video_status.state != RecorderState::Finished {
             return Ok(());
         }
 
         // Move the video to the output directory
-        let frompath = status
+        let frompath = parser.video_status
             .output_file
             .ok_or(anyhow!("ytarchive did not emit an output file"))?;
         let frompath = Path::new(&frompath);
@@ -312,18 +313,14 @@ fn strip_ansi(s: &str) -> String {
         .to_string()
 }
 
-impl YTStatus {
+pub struct YTAOutputParser {
+    video_status: VideoStatus,
+}
+
+impl YTAOutputParser {
     pub fn new() -> Self {
         Self {
-            version: None,
-            state: YTState::Idle,
-            last_output: None,
-            last_update: chrono::Utc::now(),
-            video_fragments: None,
-            audio_fragments: None,
-            total_size: None,
-            video_quality: None,
-            output_file: None,
+            video_status: VideoStatus::new()
         }
     }
 
@@ -340,36 +337,36 @@ impl YTStatus {
     ///   Muxing final file...
     ///   Final file: /path/to/output.mp4
     pub fn parse_line(&mut self, line: &str) {
-        self.last_output = Some(line.to_string());
-        self.last_update = chrono::Utc::now();
+        self.video_status.last_output = Some(line.to_string());
+        self.video_status.last_update = chrono::Utc::now();
 
         if line.starts_with("Video Fragments: ") {
-            self.state = YTState::Recording;
+            self.video_status.state = RecorderState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
-                self.video_fragments = x.trim().parse().ok();
+                self.video_status.video_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.audio_fragments = x.trim().parse().ok();
+                self.video_status.audio_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.total_size = Some(strip_ansi(x.trim()));
+                self.video_status.total_size = Some(strip_ansi(x.trim()));
             };
             return;
         } else if line.starts_with("Audio Fragments: ") {
-            self.state = YTState::Recording;
+            self.video_status.state = RecorderState::Recording;
             let mut parts = line.split(';').map(|s| s.split(':').nth(1).unwrap_or(""));
             if let Some(x) = parts.next() {
-                self.audio_fragments = x.trim().parse().ok();
+                self.video_status.audio_fragments = x.trim().parse().ok();
             };
             if let Some(x) = parts.next() {
-                self.total_size = Some(strip_ansi(x.trim()));
+                self.video_status.total_size = Some(strip_ansi(x.trim()));
             };
             return;
         }
 
         // New versions of ytarchive prepend a timestamp to the output
-        let line = if self.version == Some("0.3.2".into())
+        let line = if self.video_status.version == Some("0.3.2".into())
             && line.len() > 20
             && line.chars().nth(4) == Some('/')
         {
@@ -378,37 +375,37 @@ impl YTStatus {
             line
         };
 
-        if self.version == None && line.starts_with("ytarchive ") {
-            self.version = Some(strip_ansi(&line[10..]));
-        } else if self.video_quality == None && line.starts_with("Selected quality: ") {
-            self.video_quality = Some(strip_ansi(&line[18..]));
+        if self.video_status.version == None && line.starts_with("ytarchive ") {
+            self.video_status.version = Some(strip_ansi(&line[10..]));
+        } else if self.video_status.video_quality == None && line.starts_with("Selected quality: ") {
+            self.video_status.video_quality = Some(strip_ansi(&line[18..]));
         } else if line.starts_with("Stream starts at ") {
             let date = DateTime::parse_from_rfc3339(&line[17..42])
                 .ok()
                 .map(|d| d.into());
-            self.state = YTState::Waiting(date);
+            self.video_status.state = RecorderState::Waiting(date);
         } else if line.starts_with("Stream is ") || line.starts_with("Waiting for stream") {
-            self.state = YTState::Waiting(None);
+            self.video_status.state = RecorderState::Waiting(None);
         } else if line.starts_with("Muxing final file") {
-            self.state = YTState::Muxing;
+            self.video_status.state = RecorderState::Muxing;
         } else if line.starts_with("Livestream has been processed") {
-            self.state = YTState::AlreadyProcessed;
+            self.video_status.state = RecorderState::AlreadyProcessed;
         } else if line.starts_with("Livestream has ended and is being processed")
             || line.contains("use yt-dlp to download it.")
         {
-            self.state = YTState::Ended;
+            self.video_status.state = RecorderState::Ended;
         } else if line.starts_with("Final file: ") {
-            self.state = YTState::Finished;
-            self.output_file = Some(strip_ansi(&line[12..]));
+            self.video_status.state = RecorderState::Finished;
+            self.video_status.output_file = Some(strip_ansi(&line[12..]));
         } else if line.contains("User Interrupt") {
-            self.state = YTState::Interrupted;
+            self.video_status.state = RecorderState::Interrupted;
         } else if line.contains("Error retrieving player response")
             || line.contains("unable to retrieve")
             || line.contains("error writing the muxcmd file")
             || line.contains("Something must have gone wrong with ffmpeg")
             || line.contains("At least one error occurred")
         {
-            self.state = YTState::Errored;
+            self.video_status.state = RecorderState::Errored;
         } else if line.trim().is_empty()
             || line.contains("Loaded cookie file")
             || line.starts_with("Video Title: ")

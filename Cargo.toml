@@ -6,8 +6,6 @@ repository = "https://github.com/HoloArchivists/hoshinova"
 homepage = "https://github.com/HoloArchivists/hoshinova"
 
 [dependencies]
-json = "0.12"
-
 # Async
 async-trait = "0.1"
 futures = "0.3"
