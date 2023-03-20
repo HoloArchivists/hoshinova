@@ -73,9 +73,6 @@ pub enum RecorderState {
     Interrupted,
     Errored,
 }
-impl RecorderState {
-    fn default() -> Self { RecorderState::Idle }
-}
 
 struct SpawnTask {
     task: Task,

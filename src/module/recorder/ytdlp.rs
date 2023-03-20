@@ -49,7 +49,7 @@ impl YTDlp {
 
         // Add the --wait-for-video flag if not present
         if !args.contains(&"--wait-for-video".to_string()) {
-            // --wait-for-video requires an arg dictating how often to poll, but at least for youtube it's ignored and when the stream is scheduled is used.
+            // --wait-for-video requires an arg dictating how often to poll, but at least for youtube it's appears to be ignored and yt-dlp uses the scheduled start time instead.
             args.extend(vec![
                 "--wait-for-video".to_string(),
                 "10".to_string(),
@@ -399,7 +399,7 @@ impl YTDOutputParser {
         self.video_status.last_output = Some(line.to_string());
         self.video_status.last_update = chrono::Utc::now();
 
-        // This is also defined in YTDlp. I'm trying to share it but having issues with BTreeMap, it probably does need to be BTreeMap, just something ordered.
+        // This is also defined in YTDlp. I'm trying to share it but having issues doing so with BTreeMap. It probably doesn't need to be BTreeMap, just something ordered.
         let progress_bar_format_map: BTreeMap<&str, &str> = BTreeMap::from([
             ("percentage", "progress._percent_str"),
             ("total_size", "progress._total_bytes_str"),

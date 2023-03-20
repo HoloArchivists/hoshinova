@@ -185,7 +185,7 @@ impl YTArchive {
                 break;
             }
 
-            trace!("{}[ytd:out] {}", task_name, line);
+            trace!("{}[yta:out] {}", task_name, line);
 
             let old_state = parser.video_status.state.clone();
             parser.parse_line(&line);
