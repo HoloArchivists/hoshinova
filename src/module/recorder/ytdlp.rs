@@ -29,6 +29,19 @@ pub struct YTDlp {
     active_ids: Arc<RwLock<HashSet<String>>>,
 }
 
+const PROGRESS_BAR_FORMAT_MAP: [[&str; 2]; 10] = [
+    ["percentage", "progress._percent_str"],
+    ["total_size", "progress._total_bytes_str"],
+    ["estimated_total_size", "progress._total_bytes_estimate_str"],
+    ["downloaded_size", "progress._downloaded_bytes_str"],
+    ["speed", "progress._speed_str"],
+    ["eta", "progress._eta_str"],
+    ["elapsed_time", "progress._elapsed_str"],
+    ["total_fragments", "progress.fragment_count"],
+    ["current_fragment_count", "progress.fragment_index"],
+    ["format", "info.format"],
+];
+
 impl YTDlp {
     pub async fn record(cfg: Config, task: Task, bus: &mut BusTx<Message>) -> Result<()> {
         let task_name = format!("[{}][{}][{}]", task.video_id, task.channel_name, task.title);
@@ -70,20 +83,7 @@ impl YTDlp {
             args.push("--newline".to_string());
         }
 
-        let progress_bar_format_map: BTreeMap<&str, &str> = BTreeMap::from([
-            ("percentage", "progress._percent_str"),
-            ("total_size", "progress._total_bytes_str"),
-            ("estimated_total_size", "progress._total_bytes_estimate_str"),
-            ("downloaded_size", "progress._downloaded_bytes_str"),
-            ("speed", "progress._speed_str"),
-            ("eta", "progress._eta_str"),
-            ("elapsed_time", "progress._elapsed_str"),
-            ("total_fragments", "progress.fragment_count"),
-            ("current_fragment_count", "progress.fragment_index"),
-            ("format", "info.format"),
-        ]);
-
-        let progress_bar_template: String = progress_bar_format_map.values().map(|x| format!("%({})s", x) ).collect::<Vec<String>>().join(",");
+        let progress_bar_template = PROGRESS_BAR_FORMAT_MAP.map(|x| format!("%({})s", x[1]) ).join(",");
         args.extend(vec![
             "--progress-template".to_string(),
             format!("[download_progress] {progress_bar_template}\n").to_string(),
@@ -94,9 +94,8 @@ impl YTDlp {
             r#""echo '[download_finished] output_file: (filepath,_filename|)q'""#.to_string(),
         ]);
 
-        args.push(format!("https://youtu.be/{}", task.video_id));
         args.extend(vec![
-            format!("https://youtu.be/{}", task.video_id),
+            format!("https://www.youtube.com/watch?v={}", task.video_id),
             cfg.quality.clone(),
         ]);
 
@@ -367,9 +366,8 @@ impl YTDOutputParser {
     ///   [info] Writing video metadata as JSON to: im orb [gEdOmal1A6Q].info.json
     ///   [dashsegments] Total fragments: 11
     ///   [download] Destination: im orb [gEdOmal1A6Q].f299.mp4
-    ///   WARNING: The download speed shown is only of one thread. This is a known issue
-    ///   1: [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  100%,  99.27MiB/s,NA,       N/A
-    ///   2: [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  100%%,   4.35MiB/s,NA,       N/A
+    ///   1: [download_progress]   1.2%,       N/A,       1.17GiB,  47.86MiB,   5.61MiB/s,Unknown,00:00:08,NA,278,299 - 1920x1080 (DASH video)
+    ///   2: [download_progress]   1.2%,       N/A,       40MiB,   8.56MiB, 149.68KiB/s,Unknown,00:00:08,NA,414,140 - audio only (DASH audio)
     ///   [dashsegments] Total fragments: 2
     ///   [download] Destination: im orb [gEdOmal1A6Q].f251.webm
     ///   WARNING: The download speed shown is only of one thread. This is a known issue
@@ -379,52 +377,20 @@ impl YTDOutputParser {
     ///   Deleting original file im orb [gEdOmal1A6Q].f251.webm (pass -k to keep)
     ///   [EmbedSubtitle] There aren't any subtitles to embed
     ///   [Metadata] Adding metadata to "im orb [gEdOmal1A6Q].mkv"
-    ///
-    ///   [Cookies] Extracting cookies from firefox
-    ///   [Cookies] Extracted 2450 cookies from firefox
-    ///   [youtube] Extracting URL: https://www.youtube.com/watch?v=gEdOmal1A6Q
-    ///   [youtube] gEdOmal1A6Q: Downloading webpage
-    ///   [youtube] gEdOmal1A6Q: Downloading android player API JSON
-    ///   [info] gEdOmal1A6Q: Downloading 1 format(s): 299+251
-    ///   [info] There's no subtitles for the requested languages
-    ///   [info] Writing video metadata as JSON to: im orb [gEdOmal1A6Q].info.json
-    ///   [dashsegments] Total fragments: 11
-    ///   [download] Destination: im orb [gEdOmal1A6Q].f299.mp4
-    ///   WARNING: The download speed shown is only of one thread. This is a known issue
-    ///   [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  0.0%,  99.27MiB/s,NA,       N/A
-    ///   [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
-    ///
-
     pub fn parse_line(&mut self, line: &str) {
         self.video_status.last_output = Some(line.to_string());
         self.video_status.last_update = chrono::Utc::now();
 
-        // This is also defined in YTDlp. I'm trying to share it but having issues doing so with BTreeMap. It probably doesn't need to be BTreeMap, just something ordered.
-        let progress_bar_format_map: BTreeMap<&str, &str> = BTreeMap::from([
-            ("percentage", "progress._percent_str"),
-            ("total_size", "progress._total_bytes_str"),
-            ("estimated_total_size", "progress._total_bytes_estimate_str"),
-            ("downloaded_size", "progress._downloaded_bytes_str"),
-            ("speed", "progress._speed_str"),
-            ("eta", "progress._eta_str"),
-            ("elapsed_time", "progress._elapsed_str"),
-            ("total_fragments", "progress.fragment_count"),
-            ("current_fragment_count", "progress.fragment_index"),
-            ("format", "info.format"),
-        ]);
-
         if line.contains("[download_progress]") {
             self.video_status.state = RecorderState::Recording;
-            // 1: [download_progress] 155,  83.07MiB,00:00:05,       N/A,Unknown,299 - 1920x1080 (DASH video),  0.0%,  99.27MiB/s,NA,       N/A
-            // 2: [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
-            // [download_progress] 250,   5.16MiB,00:00:05,       N/A,Unknown,140 - audio only (DASH audio),  0.0%,   4.35MiB/s,NA,       N/A
+            //
             let re = Regex::new(r"(\d:\s)?\[download_progress\]").unwrap();
             let line = re.replace(line, "");
             let line_values: Vec<_> = line.split(",").map(|x| x.trim()).collect();
-            let parsed_line: HashMap<String, String> = progress_bar_format_map.keys().zip(
+
+            let parsed_line: HashMap<String, String> = PROGRESS_BAR_FORMAT_MAP.map(|x| x[0] ).iter().zip(
                 line_values.iter()
             ).map(|(x, y)| (x.to_string(), y.to_string())).collect();
-
             self.video_status.state = RecorderState::Recording;
             self.video_status.last_update = chrono::Utc::now();
 
@@ -441,9 +407,9 @@ impl YTDOutputParser {
             self.video_status.video_quality = parsed_line.get("format").cloned();
 
             // Hacky as this will only work DASH live streams. There is probably a better way to differentiate audio track from video track based format that will work in all cases.
-            if self.video_status.video_quality.as_ref().unwrap().contains("(DASH video)") {
+            if Regex::new(r"\d+x\d+").unwrap().is_match( self.video_status.video_quality.as_ref().unwrap()) {
                 self.video_status.video_fragments = parsed_line.get("current_fragment_count").unwrap().parse().ok();
-            } else if self.video_status.video_quality.as_ref().unwrap().contains("(DASH audio)") {
+            } else if self.video_status.video_quality.as_ref().unwrap().contains("audio only") {
                 self.video_status.audio_fragments = parsed_line.get("current_fragment_count").unwrap().parse().ok();
             }
 
@@ -505,5 +471,44 @@ impl YTDOutputParser {
 
         // RecorderState::Ended and  RecorderState::AlreadyProcessed aren't relevant for yt-dlp
         // May need to add an extra configuration to ignore older videos, or just be fine with scraper.rss ignore_older_than
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::YTDOutputParser;
+    use super::{RecorderState, VideoStatus};
+
+    #[test]
+    fn test_download_progress_parsing() {
+        let line = "[download_progress]   2.2%,       N/A,   3.17GiB,  70.03MiB,   1.99MiB/s,01:04,00:00:01,325,7,299 - 1920x1080 (1080p60)";
+
+        let mut parser = YTDOutputParser::new();
+        parser.parse_line(line);
+
+        assert_eq!(
+            parser.video_status.last_output,
+            Some(line.into())
+        );
+
+        assert_eq!(
+            parser.video_status.state,
+            RecorderState::Recording
+        );
+
+        assert_eq!(
+            parser.video_status.total_size,
+            Some("3.17GiB".into())
+        );
+
+        assert_eq!(
+            parser.video_status.video_quality,
+            Some("299 - 1920x1080 (1080p60)".into())
+        );
+
+        assert_eq!(
+            parser.video_status.video_fragments,
+            Some(7)
+        );
     }
 }
