@@ -1,4 +1,4 @@
-use self::recorder::YTAStatus;
+use self::recorder::VideoStatus;
 use crate::{config::Config, msgbus::BusTx};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -30,6 +30,7 @@ pub struct Task {
     pub channel_id: String,
     pub channel_picture: Option<String>,
     pub output_directory: String,
+    pub recorder: String,
 }
 
 #[derive(Debug, Clone, TS)]
@@ -43,7 +44,7 @@ pub struct Notification {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct RecordingStatus {
     pub task: Task,
-    pub status: YTAStatus,
+    pub status: VideoStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, TS)]

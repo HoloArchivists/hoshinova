@@ -1,4 +1,4 @@
-use super::{recorder::YTAStatus, Message, Module, Task};
+use super::{recorder::VideoStatus, Message, Module, Task};
 use crate::{
     config::{Config, WebserverConfig},
     msgbus::BusTx,
@@ -25,7 +25,7 @@ pub struct WebServer {
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct TaskWithStatus {
     pub task: Task,
-    pub status: YTAStatus,
+    pub status: VideoStatus,
 }
 
 type TaskMap = Data<RwLock<HashMap<String, TaskWithStatus>>>;
