@@ -28,6 +28,8 @@ notify_on = ["waiting", "recording", "done", "failed"]
 # Optional, remove this section to disable.
 [webserver]
 bind_address = "0.0.0.0:1104"
+# Path to a unix socket to listen on instead of / in addition to a TCP port.
+# unix_path = "/tmp/hoshinova.sock"
 
 [[channel]]
 id = "UCP0BspO_AMEe3aQqqpo89Dg"

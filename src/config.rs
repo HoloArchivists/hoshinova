@@ -72,7 +72,8 @@ pub struct NotifierDiscordConfig {
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct WebserverConfig {
-    pub bind_address: String,
+    pub bind_address: Option<String>,
+    pub unix_path: Option<String>,
 }
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]

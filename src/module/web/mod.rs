@@ -71,8 +71,8 @@ impl Module for WebServer {
     async fn run(&self, tx: &BusTx<Message>, rx: &mut mpsc::Receiver<Message>) -> Result<()> {
         // Get the configuration
         let ws_cfg = match self.get_wsconfig().await {
-            Some(cfg) => cfg,
-            None => {
+            Some(cfg) if cfg.bind_address.is_some() || cfg.unix_path.is_some() => cfg,
+            _ => {
                 debug!("No webserver configured");
 
                 // Noop read the bus
@@ -88,20 +88,32 @@ impl Module for WebServer {
         let busll = self.bus_listen_loop(rx, tasks.clone());
 
         // Set up webserver
-        info!("Starting webserver on {}", ws_cfg.bind_address);
         let config = Data::new(self.config.clone());
         let tx = Data::new(tx.clone());
-        let ws = HttpServer::new(move || {
-            App::new()
-                .app_data(config.clone())
-                .app_data(tx.clone())
-                .app_data(tasks.clone())
-                .configure(handler::configure)
-        })
-        .disable_signals()
-        .bind(ws_cfg.bind_address.clone())
-        .with_context(|| format!("Failed to bind webserver to {}", ws_cfg.bind_address))?
-        .run();
+        let ws = {
+            let mut server = HttpServer::new(move || {
+                App::new()
+                    .app_data(config.clone())
+                    .app_data(tx.clone())
+                    .app_data(tasks.clone())
+                    .configure(handler::configure)
+            })
+            .disable_signals();
+            if let Some(addr) = ws_cfg.bind_address.as_ref() {
+                info!("Starting webserver on {}", addr);
+                server = server
+                    .bind(addr.clone())
+                    .with_context(|| format!("Failed to bind webserver to {}", addr))?;
+            }
+            #[cfg(unix)]
+            if let Some(path) = ws_cfg.unix_path.as_ref() {
+                info!("Starting webserver on {}", path);
+                server = server
+                    .bind_uds(path.clone())
+                    .with_context(|| format!("Failed to bind webserver to {}", path))?;
+            }
+            server.run()
+        };
 
         let handle = ws.handle();
 
