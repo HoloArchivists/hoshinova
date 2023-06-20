@@ -53,6 +53,10 @@ impl URL {
             return Some(path[1..].to_string());
         }
 
+        if path.starts_with("/live/") {
+            return Some(path[6..].to_string());
+        }
+
         if path == "/watch" {
             return self
                 .parsed_uri

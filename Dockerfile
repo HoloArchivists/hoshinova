@@ -45,14 +45,20 @@ COPY --from=web-builder /src/web/dist /src/web/dist
 RUN touch src/main.rs && \
     cargo build --locked --release --target x86_64-unknown-linux-musl
 
+# Build ytarchive
+FROM golang:1.20-alpine AS ytarchive-builder
+WORKDIR /src
+RUN set -ex; \
+    apk add --no-cache git; \
+    git clone https://github.com/Kethsar/ytarchive.git; \
+    cd ytarchive; \
+    git checkout b40d0a1fb70e59aff2c8642f265d3cd653c1a75d; \
+    go build .
+
 FROM alpine AS runner
 WORKDIR /app
-RUN set -ex; \
-    apk add --no-cache ffmpeg wget unzip; \
-    wget -O /app/ytarchive.zip https://github.com/Kethsar/ytarchive/releases/download/v0.3.2/ytarchive_linux_amd64.zip; \
-    unzip /app/ytarchive.zip -d /usr/local/bin/; \
-    rm /app/ytarchive.zip; \
-    apk del wget unzip;
+RUN apk add --no-cache ffmpeg
+COPY --from=ytarchive-builder /src/ytarchive/ytarchive /usr/local/bin/ytarchive
 
 USER 1000
 COPY --from=rust-builder --chown=1000:1000 \
