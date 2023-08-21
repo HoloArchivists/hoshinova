@@ -24,11 +24,11 @@ import { IconPlus } from '@tabler/icons';
 import { closeAllModals, openModal } from '@mantine/modals';
 import { showNotification } from '@mantine/notifications';
 import { useQueryConfig } from '../api/config';
-import { YTAState } from '../bindings/YTAState';
+import { RecorderState } from '../bindings/RecorderState';
 
 const SleepingPanda = React.lazy(() => import('../lotties/SleepingPanda'));
 
-const TaskStateBadge = ({ state }: { state: YTAState }) => (
+const TaskStateBadge = ({ state }: { state: RecorderState }) => (
   <Badge
     color={
       state === 'Recording'

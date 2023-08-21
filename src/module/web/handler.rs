@@ -94,6 +94,7 @@ async fn post_task(
         channel_id: ipr.video_details.channel_id,
         channel_picture: Some(channel_picture),
         output_directory: taskreq.output_directory,
+        recorder: "ytarchive".to_owned(), // TODO: Allow choosing recorder in UI
     };
 
     // Broadcast it to the bus
