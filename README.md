@@ -71,6 +71,8 @@ docker run -d \
   ghcr.io/holoarchivists/hoshinova:main
 ```
 
+** Note **: When running in Docker, the service runs as UID 1000, so bind-mount permissions need to be set correctly: `chown -R 1000:1000 ./videos ./temp` (adjust paths to whatever locations your mounting to the Docker container volumes).
+
 Or with `docker-compose`:
 
 ```yaml
@@ -86,6 +88,8 @@ services:
       - ./temp/:/app/temp
       - ./videos:/app/videos
 ```
+
+** Note **: When using `docker-compose`, restarting the service will not update it. To update, use `docker-compose pull` and then `docker-compose up -d`.
 
 ## Configure
 
