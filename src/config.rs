@@ -6,7 +6,8 @@ use ts_rs::TS;
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
 #[ts(export, export_to = "web/src/bindings/")]
 pub struct Config {
-    pub ytarchive: YtarchiveConfig,
+    pub ytarchive: RecorderConfig,
+    pub ytdlp: RecorderConfig,
     pub scraper: ScraperConfig,
     pub notifier: Option<NotifierConfig>,
     pub webserver: Option<WebserverConfig>,
@@ -19,7 +20,7 @@ pub struct Config {
 
 #[derive(Clone, TS, Serialize, Deserialize, Debug)]
 #[ts(export, export_to = "web/src/bindings/")]
-pub struct YtarchiveConfig {
+pub struct RecorderConfig {
     pub executable_path: String,
     pub working_directory: String,
     pub args: Vec<String>,
@@ -89,6 +90,7 @@ pub struct ChannelConfig {
     pub outpath: String,
     /// If not present, will be fetched during runtime.
     pub picture_url: Option<String>,
+    pub recorder: String, // TODO: Check this is a valid recorder on config load.
 }
 
 fn default_false() -> bool {

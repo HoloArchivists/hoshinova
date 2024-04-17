@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { YTAState } from '../bindings/YTAState';
+import { RecorderState } from '../bindings/RecorderState';
 import { TaskWithStatus } from '../bindings/TaskWithStatus';
 import { rejectError } from './api';
 import { CreateTaskRequest } from '../bindings/CreateTaskRequest';
 
-export const stateString = (state: YTAState) => {
+export const stateString = (state: RecorderState) => {
   if (typeof state === 'object' && 'Waiting' in state)
     return 'Waiting (' + state.Waiting + ')';
   else if (state === 'AlreadyProcessed') return 'Already Processed';
   else return state;
 };
-export const stateKey = (state: YTAState) =>
+export const stateKey = (state: RecorderState) =>
   typeof state === 'object'
     ? (Object.keys(state) as (keyof typeof state)[])[0]
     : state;

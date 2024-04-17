@@ -128,6 +128,7 @@ impl RSS {
                     channel_id: entry.channel_id.to_owned(),
                     channel_picture: channel.picture_url.clone(),
                     output_directory: channel.outpath.clone(),
+                    recorder: channel.recorder.clone(),
                 })
             })
             .collect();
