@@ -480,9 +480,11 @@ impl YTAStatus {
         // New versions of ytarchive prepend a timestamp to the output
         // Sample line
         // 2024/04/16 16:25:31
-        let timestamp_re = Regex::new(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
-            .expect("Failed to compile regex for detecting yta output timestamp");
-        let line = if line.len() > 20 && timestamp_re.is_match(line) {
+        lazy_static! {
+            static ref TIMESTAMP_RE: Regex = Regex::new(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+                .expect("Failed to compile regex for detecting yta output timestamp");
+        }
+        let line = if line.len() > 20 && TIMESTAMP_RE.is_match(line) {
             line[20..].trim()
         } else {
             line
