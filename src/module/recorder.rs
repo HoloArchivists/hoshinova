@@ -478,10 +478,13 @@ impl YTAStatus {
         }
 
         // New versions of ytarchive prepend a timestamp to the output
-        let line = if self.version == Some("0.3.2".into())
-            && line.len() > 20
-            && line.chars().nth(4) == Some('/')
-        {
+        // Sample line
+        // 2024/04/16 16:25:31
+        lazy_static! {
+            static ref TIMESTAMP_RE: Regex = Regex::new(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+                .expect("Failed to compile regex for detecting yta output timestamp");
+        }
+        let line = if line.len() > 20 && TIMESTAMP_RE.is_match(line) {
             line[20..].trim()
         } else {
             line
